@@ -13,10 +13,10 @@ export function ControlField({
   children,
 }: PropsWithChildren<ControlFieldProps>) {
   return (
-    <label className="control-field" htmlFor={htmlFor}>
-      <span className="control-field__label">{label}</span>
+    <label className="flex flex-col gap-2" htmlFor={htmlFor}>
+      <span className="text-sm font-semibold text-foreground">{label}</span>
       {children}
-      {hint ? <span className="control-field__hint">{hint}</span> : null}
+      {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
     </label>
   );
 }

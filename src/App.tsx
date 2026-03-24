@@ -1,23 +1,99 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrangementPanel } from "./components/ArrangementPanel";
-import { ControlField } from "./components/ControlField";
-import { LayerToggleGroup } from "./components/LayerToggleGroup";
-import { LoopSummary } from "./components/LoopSummary";
+import { ArrangementLibraryView } from "./components/ArrangementLibraryView";
+import { AppShell } from "./components/AppShell";
+import { LeftSidebar } from "./components/LeftSidebar";
+import { MainWorkspace } from "./components/MainWorkspace";
+import { RightSidebar } from "./components/RightSidebar";
+import { TopBar } from "./components/TopBar";
 import { createSavedLoop, getDefaultLoopName, moveSavedLoop } from "./music/arrangement";
+import {
+  createStoredArrangement,
+  loadStoredArrangements,
+  saveStoredArrangements,
+  type StoredArrangement,
+} from "./music/arrangementLibrary";
 import { DEFAULT_SETTINGS, KEY_OPTIONS } from "./music/constants";
 import { generateLoop } from "./music/generator";
-import { exportArrangementToMidi, exportLoopToMidi } from "./midi/exportMidi";
+import { downloadArrangementMidi, exportLoopToMidi } from "./midi/exportMidi";
 import type { LoopSettings, Mood, SavedLoop, ScaleType } from "./music/types";
 import { playbackEngine } from "./playback/transport";
 
 const MOOD_OPTIONS: Mood[] = ["Balanced", "Dark", "Bright", "Sparse", "Intense", "Calm"];
 const SCALE_OPTIONS: ScaleType[] = ["Major", "Minor"];
+const AUTOPLAY_STORAGE_KEY = "loop-forge-autoplay";
+const VOLUME_STORAGE_KEY = "loop-forge-volume";
+const SETTINGS_COOKIE_KEYS = {
+  key: "loop-forge-key",
+  scale: "loop-forge-scale",
+  tempo: "loop-forge-tempo",
+  length: "loop-forge-length",
+  mood: "loop-forge-mood",
+} as const;
+
+function getCookieValue(name: string): string | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const match = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(`${name}=`));
+
+  return match ? decodeURIComponent(match.split("=")[1]) : null;
+}
+
+function setCookieValue(name: string, value: string): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax`;
+}
+
+function getInitialSettings(): LoopSettings {
+  if (typeof document === "undefined") {
+    return DEFAULT_SETTINGS;
+  }
+
+  const key = getCookieValue(SETTINGS_COOKIE_KEYS.key);
+  const scale = getCookieValue(SETTINGS_COOKIE_KEYS.scale);
+  const tempo = Number(getCookieValue(SETTINGS_COOKIE_KEYS.tempo));
+  const length = Number(getCookieValue(SETTINGS_COOKIE_KEYS.length));
+  const mood = getCookieValue(SETTINGS_COOKIE_KEYS.mood);
+
+  return {
+    ...DEFAULT_SETTINGS,
+    key: key && (KEY_OPTIONS as readonly string[]).includes(key) ? key : DEFAULT_SETTINGS.key,
+    scale: scale === "Major" || scale === "Minor" ? scale : DEFAULT_SETTINGS.scale,
+    tempo: Number.isFinite(tempo) && tempo >= 60 && tempo <= 180 ? tempo : DEFAULT_SETTINGS.tempo,
+    length: length === 2 || length === 4 ? length : DEFAULT_SETTINGS.length,
+    mood: mood && MOOD_OPTIONS.includes(mood as Mood) ? (mood as Mood) : DEFAULT_SETTINGS.mood,
+  };
+}
 
 export default function App() {
-  const [settings, setSettings] = useState<LoopSettings>(DEFAULT_SETTINGS);
-  const [loop, setLoop] = useState(() => generateLoop(DEFAULT_SETTINGS));
+  const [settings, setSettings] = useState<LoopSettings>(() => getInitialSettings());
+  const [loop, setLoop] = useState(() => generateLoop(getInitialSettings()));
   const [isPlaying, setIsPlaying] = useState(false);
+  const [activeView, setActiveView] = useState<"studio" | "library">("studio");
+  const [autoplay, setAutoplay] = useState(() => {
+    if (typeof document === "undefined") {
+      return false;
+    }
+
+    return getCookieValue(AUTOPLAY_STORAGE_KEY) === "true";
+  });
+  const [volume, setVolume] = useState(() => {
+    if (typeof window === "undefined") {
+      return 0.7;
+    }
+
+    const stored = Number(window.localStorage.getItem(VOLUME_STORAGE_KEY));
+    return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.7;
+  });
   const [savedLoops, setSavedLoops] = useState<SavedLoop[]>([]);
+  const [arrangementName, setArrangementName] = useState("");
+  const [storedArrangements, setStoredArrangements] = useState<StoredArrangement[]>(() => loadStoredArrangements());
   const currentLoop = useMemo(() => {
     if (!loop) {
       return null;
@@ -36,10 +112,38 @@ export default function App() {
     () => settings.layers.chords || settings.layers.melody || settings.layers.bass,
     [settings.layers],
   );
+  const topBarStatus = useMemo(() => {
+    const key = currentLoop?.settings.key ?? settings.key;
+    const scale = currentLoop?.settings.scale ?? settings.scale;
+    const tempo = settings.tempo;
+
+    return `${key} ${scale} • ${tempo} BPM`;
+  }, [currentLoop, settings.key, settings.scale, settings.tempo]);
 
   useEffect(() => {
     playbackEngine.setTempo(settings.tempo);
   }, [settings.tempo]);
+
+  useEffect(() => {
+    playbackEngine.setVolume(volume);
+    window.localStorage.setItem(VOLUME_STORAGE_KEY, String(volume));
+  }, [volume]);
+
+  useEffect(() => {
+    setCookieValue(AUTOPLAY_STORAGE_KEY, String(autoplay));
+  }, [autoplay]);
+
+  useEffect(() => {
+    setCookieValue(SETTINGS_COOKIE_KEYS.key, settings.key);
+    setCookieValue(SETTINGS_COOKIE_KEYS.scale, settings.scale);
+    setCookieValue(SETTINGS_COOKIE_KEYS.tempo, String(settings.tempo));
+    setCookieValue(SETTINGS_COOKIE_KEYS.length, String(settings.length));
+    setCookieValue(SETTINGS_COOKIE_KEYS.mood, settings.mood);
+  }, [settings.key, settings.scale, settings.tempo, settings.length, settings.mood]);
+
+  useEffect(() => {
+    saveStoredArrangements(storedArrangements);
+  }, [storedArrangements]);
 
   useEffect(() => {
     return () => {
@@ -54,11 +158,16 @@ export default function App() {
     }));
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     const nextLoop = generateLoop(settings);
+    playbackEngine.stop();
     setLoop(nextLoop);
     setIsPlaying(false);
-    playbackEngine.stop();
+
+    if (autoplay) {
+      await playbackEngine.play(nextLoop);
+      setIsPlaying(true);
+    }
   };
 
   const handlePlay = async () => {
@@ -73,6 +182,15 @@ export default function App() {
   const handleStop = () => {
     playbackEngine.stop();
     setIsPlaying(false);
+  };
+
+  const handlePlayArrangement = async () => {
+    if (savedLoops.length === 0) {
+      return;
+    }
+
+    setIsPlaying(false);
+    await playbackEngine.playArrangement(savedLoops);
   };
 
   const handleExport = () => {
@@ -124,123 +242,83 @@ export default function App() {
     setSavedLoops((current) => current.filter((savedLoop) => savedLoop.id !== id));
   };
 
+  const handleSaveArrangement = () => {
+    if (savedLoops.length === 0 || arrangementName.trim().length === 0) {
+      return;
+    }
+
+    const arrangement = createStoredArrangement(arrangementName.trim(), savedLoops);
+
+    setStoredArrangements((current) => [arrangement, ...current]);
+    setArrangementName("");
+    setActiveView("library");
+  };
+
+  const handleDownloadArrangementMidi = (arrangement: StoredArrangement) => {
+    const loops: SavedLoop[] = arrangement.loops.map((loop) => ({
+      id: loop.id,
+      name: loop.name,
+      loop: loop.loop,
+    }));
+
+    downloadArrangementMidi(loops, arrangement.name);
+  };
+
   return (
-    <main className="app-shell">
-      <div className="workspace">
-        <section className="workspace__main">
-          <section className="hero">
-            <div>
-              <p className="eyebrow">Loop Forge</p>
-              <h1>Small loop ideas for fast music sketching</h1>
-              <p className="hero-copy">
-                Generate one short harmonic idea, audition it, save the good ones, and assemble a simple song sketch.
-              </p>
-            </div>
-          </section>
-
-          <section className="panel grid">
-            <ControlField label="Key" htmlFor="key">
-              <select
-                id="key"
-                value={settings.key}
-                onChange={(event) => updateSettings("key", event.target.value)}
-              >
-                {KEY_OPTIONS.map((key) => (
-                  <option key={key} value={key}>
-                    {key}
-                  </option>
-                ))}
-              </select>
-            </ControlField>
-
-            <ControlField label="Scale" htmlFor="scale">
-              <select
-                id="scale"
-                value={settings.scale}
-                onChange={(event) => updateSettings("scale", event.target.value as ScaleType)}
-              >
-                {SCALE_OPTIONS.map((scale) => (
-                  <option key={scale} value={scale}>
-                    {scale}
-                  </option>
-                ))}
-              </select>
-            </ControlField>
-
-            <ControlField label="Tempo" htmlFor="tempo" hint="Recommended range: 80 to 160 BPM">
-              <input
-                id="tempo"
-                type="number"
-                min={60}
-                max={180}
-                value={settings.tempo}
-                onChange={(event) => updateSettings("tempo", Number(event.target.value))}
-              />
-            </ControlField>
-
-            <ControlField label="Length" htmlFor="length">
-              <select
-                id="length"
-                value={settings.length}
-                onChange={(event) => updateSettings("length", Number(event.target.value) as 2 | 4)}
-              >
-                <option value={2}>2 bars</option>
-                <option value={4}>4 bars</option>
-              </select>
-            </ControlField>
-
-            <ControlField label="Mood" htmlFor="mood">
-              <select
-                id="mood"
-                value={settings.mood}
-                onChange={(event) => updateSettings("mood", event.target.value as Mood)}
-              >
-                {MOOD_OPTIONS.map((mood) => (
-                  <option key={mood} value={mood}>
-                    {mood}
-                  </option>
-                ))}
-              </select>
-            </ControlField>
-
-            <ControlField label="Layers" hint="At least one layer must be enabled">
-              <LayerToggleGroup
-                value={settings.layers}
-                onChange={(layers) => updateSettings("layers", layers)}
-              />
-            </ControlField>
-          </section>
-
-          <section className="actions">
-            <button type="button" onClick={handleGenerate} disabled={!canGenerate}>
-              Generate
-            </button>
-            <button type="button" className="secondary" onClick={handleSaveLoop} disabled={!currentLoop}>
-              Save Loop
-            </button>
-            <button type="button" onClick={handlePlay} disabled={!currentLoop}>
-              {isPlaying ? "Restart" : "Play"}
-            </button>
-            <button type="button" className="secondary" onClick={handleStop}>
-              Stop
-            </button>
-            <button type="button" className="secondary" onClick={handleExport} disabled={!currentLoop}>
-              Export MIDI
-            </button>
-          </section>
-
-          <LoopSummary loop={currentLoop} />
-        </section>
-
-        <ArrangementPanel
-          savedLoops={savedLoops}
-          onRename={handleRenameSavedLoop}
-          onMoveUp={(id) => handleMoveSavedLoop(id, -1)}
-          onMoveDown={(id) => handleMoveSavedLoop(id, 1)}
-          onRemove={handleRemoveSavedLoop}
-          onExportArrangement={() => exportArrangementToMidi(savedLoops)}
+    <AppShell
+      topBar={
+        <TopBar
+          status={topBarStatus}
+          volume={volume}
+          activeView={activeView}
+          onVolumeChange={setVolume}
+          onViewChange={setActiveView}
         />
-      </div>
-    </main>
+      }
+      content={
+        activeView === "library" ? (
+          <ArrangementLibraryView arrangements={storedArrangements} onDownloadMidi={handleDownloadArrangementMidi} />
+        ) : undefined
+      }
+      leftSidebar={
+        activeView === "studio" ? (
+          <LeftSidebar
+            settings={settings}
+            keyOptions={KEY_OPTIONS}
+            scaleOptions={SCALE_OPTIONS}
+            moodOptions={MOOD_OPTIONS}
+            canGenerate={canGenerate}
+            hasCurrentLoop={Boolean(currentLoop)}
+            isPlaying={isPlaying}
+            autoplay={autoplay}
+            onUpdateSetting={updateSettings}
+            onUpdateLayers={(layers) => updateSettings("layers", layers)}
+            onAutoplayChange={setAutoplay}
+            onGenerate={handleGenerate}
+            onSaveLoop={handleSaveLoop}
+            onPlay={handlePlay}
+            onStop={handleStop}
+            onExportMidi={handleExport}
+          />
+        ) : null
+      }
+      mainWorkspace={activeView === "studio" ? <MainWorkspace loop={currentLoop} /> : null}
+      rightSidebar={
+        activeView === "studio" ? (
+          <RightSidebar
+            savedLoops={savedLoops}
+            arrangementName={arrangementName}
+            onRename={handleRenameSavedLoop}
+            onMoveUp={(id) => handleMoveSavedLoop(id, -1)}
+            onMoveDown={(id) => handleMoveSavedLoop(id, 1)}
+            onRemove={handleRemoveSavedLoop}
+            onArrangementNameChange={setArrangementName}
+            onPlayArrangement={handlePlayArrangement}
+            onStopArrangement={handleStop}
+            onSaveArrangement={handleSaveArrangement}
+          />
+        ) : null
+      }
+    />
   );
 }

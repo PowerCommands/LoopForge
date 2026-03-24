@@ -7,18 +7,22 @@ interface LoopSummaryProps {
 export function LoopSummary({ loop }: LoopSummaryProps) {
   if (!loop) {
     return (
-      <section className="panel">
-        <h2>Current Loop</h2>
-        <p className="muted">Generate a loop to preview the structure before exporting it to MIDI.</p>
+      <section className="rounded-lg border border-dashed border-border bg-white/50 p-4 dark:bg-[#17152d]">
+        <p className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">Current Loop</p>
+        <p className="m-0 text-sm text-muted-foreground">
+          Generate a loop to preview the structure before exporting it to MIDI.
+        </p>
       </section>
     );
   }
 
   return (
-    <section className="panel">
-      <h2>Current Loop</h2>
-      <p className="summary-title">Key / Scale: {loop.settings.key} {loop.settings.scale}</p>
-      <ul className="summary-list">
+    <section className="rounded-lg border border-border bg-white/55 p-4 dark:bg-[#17152d]">
+      <p className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">Current Loop</p>
+      <p className="mb-2 text-base font-semibold text-foreground">
+        Key / Scale: {loop.settings.key} {loop.settings.scale}
+      </p>
+      <ul className="m-0 space-y-2 pl-5 text-sm text-muted-foreground">
         <li>Tempo: {loop.settings.tempo} BPM</li>
         <li>
           Chord progression:{" "}

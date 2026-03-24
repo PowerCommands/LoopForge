@@ -66,6 +66,14 @@ function createExportFilename(loop: GeneratedLoop): string {
   return `loop-forge_${key}_${scale}_${loop.settings.tempo}_${mood}.mid`;
 }
 
+function sanitizeMidiFilename(filename: string): string {
+  const trimmed = filename.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-");
+  const withoutExtension = trimmed.toLowerCase().endsWith(".mid") ? trimmed.slice(0, -4) : trimmed;
+  const safeName = withoutExtension.trim().replace(/\.+$/, "");
+
+  return `${safeName.length > 0 ? safeName : "loop-forge-arrangement"}.mid`;
+}
+
 function getOrCreateTrack(midi: Midi, tracks: MidiTrackMap, layer: LayerName) {
   if (!tracks[layer]) {
     const track = midi.addTrack();
@@ -155,25 +163,7 @@ function downloadMidiFile(midi: Midi, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function exportLoopToMidi(loop: GeneratedLoop): void {
-  const midi = new Midi();
-  midi.header.setTempo(loop.settings.tempo);
-  midi.header.timeSignatures.push({
-    measures: 0,
-    ticks: 0,
-    timeSignature: [4, 4],
-  });
-
-  appendLoopToTracks(midi, {}, loop, 0);
-  midi.header.update();
-  downloadMidiFile(midi, createExportFilename(loop));
-}
-
-export function exportArrangementToMidi(savedLoops: SavedLoop[]): void {
-  if (savedLoops.length === 0) {
-    return;
-  }
-
+function createArrangementMidi(savedLoops: SavedLoop[]): Midi {
   const midi = new Midi();
   const ppq = midi.header.ppq;
   const tracks: MidiTrackMap = {};
@@ -204,5 +194,42 @@ export function exportArrangementToMidi(savedLoops: SavedLoop[]): void {
   });
 
   midi.header.update();
-  downloadMidiFile(midi, "loop-forge-arrangement.mid");
+
+  return midi;
+}
+
+export function exportLoopToMidi(loop: GeneratedLoop): void {
+  const midi = new Midi();
+  midi.header.setTempo(loop.settings.tempo);
+  midi.header.timeSignatures.push({
+    measures: 0,
+    ticks: 0,
+    timeSignature: [4, 4],
+  });
+
+  appendLoopToTracks(midi, {}, loop, 0);
+  midi.header.update();
+  downloadMidiFile(midi, createExportFilename(loop));
+}
+
+export function exportArrangementToMidi(savedLoops: SavedLoop[]): void {
+  if (savedLoops.length === 0) {
+    return;
+  }
+
+  const requestedName = window.prompt("Arrangement MIDI filename", "loop-forge-arrangement")?.trim();
+
+  if (requestedName === undefined) {
+    return;
+  }
+
+  downloadMidiFile(createArrangementMidi(savedLoops), sanitizeMidiFilename(requestedName ?? "loop-forge-arrangement"));
+}
+
+export function downloadArrangementMidi(savedLoops: SavedLoop[], filename: string): void {
+  if (savedLoops.length === 0) {
+    return;
+  }
+
+  downloadMidiFile(createArrangementMidi(savedLoops), sanitizeMidiFilename(filename));
 }

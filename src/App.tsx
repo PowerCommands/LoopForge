@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrangementLibraryView } from "./components/ArrangementLibraryView";
 import { AppShell } from "./components/AppShell";
 import { LeftSidebar } from "./components/LeftSidebar";
+import { LyricsWorkspace } from "./components/LyricsWorkspace";
 import { MainWorkspace } from "./components/MainWorkspace";
 import { RightSidebar } from "./components/RightSidebar";
 import { TopBar } from "./components/TopBar";
@@ -75,7 +76,7 @@ export default function App() {
   const [settings, setSettings] = useState<LoopSettings>(() => getInitialSettings());
   const [loop, setLoop] = useState(() => generateLoop(getInitialSettings()));
   const [isPlaying, setIsPlaying] = useState(false);
-  const [activeView, setActiveView] = useState<"studio" | "library">("studio");
+  const [activeView, setActiveView] = useState<"studio" | "library" | "lyrics">("studio");
   const [autoplay, setAutoplay] = useState(() => {
     if (typeof document === "undefined") {
       return false;
@@ -278,6 +279,8 @@ export default function App() {
       content={
         activeView === "library" ? (
           <ArrangementLibraryView arrangements={storedArrangements} onDownloadMidi={handleDownloadArrangementMidi} />
+        ) : activeView === "lyrics" ? (
+          <LyricsWorkspace arrangements={storedArrangements} />
         ) : undefined
       }
       leftSidebar={

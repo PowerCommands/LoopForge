@@ -2,11 +2,28 @@ export type ScaleType = "Major" | "Minor";
 export type Mood = "Balanced" | "Dark" | "Bright" | "Sparse" | "Intense" | "Calm";
 export type LoopLength = 2 | 4;
 export type LayerName = "chords" | "melody" | "bass";
+export type SequencePatternLength = 8 | 16;
+export type SequenceDensity = "low" | "medium" | "high";
+export type SequenceVariation = "low" | "medium" | "high";
+export type SequenceStyle = "straight" | "syncopated" | "flowing" | "arp-like";
+export type SequenceStepState = "trigger" | "rest" | "hold";
 
 export interface LayerToggles {
   chords: boolean;
   melody: boolean;
   bass: boolean;
+}
+
+export interface SequenceSettings {
+  patternLength: SequencePatternLength;
+  density: SequenceDensity;
+  variation: SequenceVariation;
+  style: SequenceStyle;
+}
+
+export interface SequencePattern {
+  length: SequencePatternLength;
+  steps: SequenceStepState[];
 }
 
 export interface LoopSettings {
@@ -16,6 +33,7 @@ export interface LoopSettings {
   length: LoopLength;
   mood: Mood;
   layers: LayerToggles;
+  sequence: SequenceSettings;
 }
 
 export interface TimedNote {

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { StoredArrangement } from "../music/arrangementLibrary";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { useConfirmDialog } from "./ui/confirm-dialog";
 import { Input } from "./ui/input";
 import { Select } from "./ui/select";
 
@@ -14,6 +15,7 @@ interface LyricsRow {
 
 interface LyricsWorkspaceProps {
   arrangements: StoredArrangement[];
+  onArrangementLyricsChange: (arrangementId: string, lyrics: { text1?: string; text2?: string }) => void;
 }
 
 const PRIMARY_LYRIC_TAGS = [
@@ -70,6 +72,14 @@ function createEmptyRow(): LyricsRow {
 
 function buildLyricsText(rows: LyricsRow[]): string {
   return rows.map((row) => row.text.trim()).filter((value) => value.length > 0).join("\n");
+}
+
+function createRowsFromLyricsText(text: string): LyricsRow[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => ({ ...createEmptyRow(), text: line }));
 }
 
 function LyricsTable({
@@ -196,7 +206,8 @@ function LyricsTable({
   );
 }
 
-export function LyricsWorkspace({ arrangements }: LyricsWorkspaceProps) {
+export function LyricsWorkspace({ arrangements, onArrangementLyricsChange }: LyricsWorkspaceProps) {
+  const confirm = useConfirmDialog();
   const [selectedArrangementId, setSelectedArrangementId] = useState<string>("");
   const [selectedTarget, setSelectedTarget] = useState<{ table: LyricsTableSide; rowId: string } | null>(null);
   const [leftRows, setLeftRows] = useState<LyricsRow[]>([]);
@@ -210,12 +221,23 @@ export function LyricsWorkspace({ arrangements }: LyricsWorkspaceProps) {
   );
 
   const resetWorkspace = (arrangementId: string) => {
+    const arrangement = arrangements.find((item) => item.id === arrangementId);
+
     setSelectedArrangementId(arrangementId);
     setSelectedTarget(null);
-    setLeftRows([]);
-    setRightRows([]);
-    setLeftLyrics("");
-    setRightLyrics("");
+
+    if (!arrangement) {
+      setLeftRows([]);
+      setRightRows([]);
+      setLeftLyrics("");
+      setRightLyrics("");
+      return;
+    }
+
+    setLeftRows(createRowsFromLyricsText(arrangement.text1));
+    setRightRows(createRowsFromLyricsText(arrangement.text2));
+    setLeftLyrics(arrangement.text1);
+    setRightLyrics(arrangement.text2);
   };
 
   const updateRowsForSide = (side: LyricsTableSide, updater: (rows: LyricsRow[]) => LyricsRow[]) => {
@@ -246,7 +268,18 @@ export function LyricsWorkspace({ arrangements }: LyricsWorkspaceProps) {
     setSelectedTarget({ table: side, rowId: row.id });
   };
 
-  const removeRowFromSide = (side: LyricsTableSide, rowId: string) => {
+  const removeRowFromSide = async (side: LyricsTableSide, rowId: string) => {
+    const shouldContinue = await confirm({
+      title: "Delete Lyric Row?",
+      description: "This removes the selected lyric row from the current workspace.",
+      confirmLabel: "Delete Row",
+      tone: "destructive",
+    });
+
+    if (!shouldContinue) {
+      return;
+    }
+
     const rows = side === "left" ? leftRows : rightRows;
     const index = rows.findIndex((row) => row.id === rowId);
 
@@ -274,7 +307,18 @@ export function LyricsWorkspace({ arrangements }: LyricsWorkspaceProps) {
     });
   };
 
-  const clearRowsInSide = (side: LyricsTableSide) => {
+  const clearRowsInSide = async (side: LyricsTableSide) => {
+    const shouldContinue = await confirm({
+      title: "Clear All Rows?",
+      description: "This removes all lyric rows on the selected side.",
+      confirmLabel: "Clear Rows",
+      tone: "destructive",
+    });
+
+    if (!shouldContinue) {
+      return;
+    }
+
     if (side === "left") {
       setLeftRows([]);
       setLeftLyrics("");
@@ -362,15 +406,21 @@ export function LyricsWorkspace({ arrangements }: LyricsWorkspaceProps) {
   };
 
   const handleGenerateLyrics = (side: LyricsTableSide) => {
+    if (!selectedArrangementId) {
+      return;
+    }
+
     const rows = side === "left" ? leftRows : rightRows;
     const lyrics = buildLyricsText(rows);
 
     if (side === "left") {
       setLeftLyrics(lyrics);
+      onArrangementLyricsChange(selectedArrangementId, { text1: lyrics });
       return;
     }
 
     setRightLyrics(lyrics);
+    onArrangementLyricsChange(selectedArrangementId, { text2: lyrics });
   };
 
   const handleCopyLyrics = async (side: LyricsTableSide) => {
@@ -434,10 +484,10 @@ export function LyricsWorkspace({ arrangements }: LyricsWorkspaceProps) {
                 selectedRowId={selectedTarget?.table === "left" ? selectedTarget.rowId : null}
                 generatedLyrics={leftLyrics}
                 onAddFirstRow={() => createRowInSide("left")}
-                onClearAllRows={() => clearRowsInSide("left")}
+                onClearAllRows={() => void clearRowsInSide("left")}
                 onSelectRow={(rowId) => setSelectedTarget({ table: "left", rowId })}
                 onAddRowBelow={(rowId) => createRowInSide("left", rowId)}
-                onRemoveRow={(rowId) => removeRowFromSide("left", rowId)}
+                onRemoveRow={(rowId) => void removeRowFromSide("left", rowId)}
                 onMoveRow={(rowId, direction) => moveRowInSide("left", rowId, direction)}
                 onUpdateRow={(rowId, text) => updateRowText("left", rowId, text)}
                 onGenerateLyrics={() => handleGenerateLyrics("left")}
@@ -449,10 +499,10 @@ export function LyricsWorkspace({ arrangements }: LyricsWorkspaceProps) {
                 selectedRowId={selectedTarget?.table === "right" ? selectedTarget.rowId : null}
                 generatedLyrics={rightLyrics}
                 onAddFirstRow={() => createRowInSide("right")}
-                onClearAllRows={() => clearRowsInSide("right")}
+                onClearAllRows={() => void clearRowsInSide("right")}
                 onSelectRow={(rowId) => setSelectedTarget({ table: "right", rowId })}
                 onAddRowBelow={(rowId) => createRowInSide("right", rowId)}
-                onRemoveRow={(rowId) => removeRowFromSide("right", rowId)}
+                onRemoveRow={(rowId) => void removeRowFromSide("right", rowId)}
                 onMoveRow={(rowId, direction) => moveRowInSide("right", rowId, direction)}
                 onUpdateRow={(rowId, text) => updateRowText("right", rowId, text)}
                 onGenerateLyrics={() => handleGenerateLyrics("right")}

@@ -4,6 +4,12 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Select } from "./ui/select";
+import {
+  SEQUENCE_DENSITY_OPTIONS,
+  SEQUENCE_PATTERN_LENGTH_OPTIONS,
+  SEQUENCE_STYLE_OPTIONS,
+  SEQUENCE_VARIATION_OPTIONS,
+} from "../music/constants";
 import type { LoopSettings, Mood, ScaleType, LayerToggles } from "../music/types";
 
 interface LeftSidebarProps {
@@ -117,6 +123,92 @@ export function LeftSidebar({
                 ))}
               </Select>
             </ControlField>
+
+            <div className="rounded-lg border border-border bg-white/45 p-3 dark:bg-white/5">
+              <div className="mb-3">
+                <p className="m-0 text-sm font-semibold text-foreground">Bass / Melody Sequence</p>
+                <p className="m-0 mt-1 text-xs text-muted-foreground">
+                  Shape the internal rhythm engine for the generated bass and melody layers.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <ControlField label="Pattern Length" htmlFor="pattern-length">
+                  <Select
+                    id="pattern-length"
+                    value={settings.sequence.patternLength}
+                    onChange={(event) =>
+                      onUpdateSetting("sequence", {
+                        ...settings.sequence,
+                        patternLength: Number(event.target.value) as 8 | 16,
+                      })
+                    }
+                  >
+                    {SEQUENCE_PATTERN_LENGTH_OPTIONS.map((length) => (
+                      <option key={length} value={length}>
+                        {length} steps
+                      </option>
+                    ))}
+                  </Select>
+                </ControlField>
+
+                <ControlField label="Style" htmlFor="sequence-style">
+                  <Select
+                    id="sequence-style"
+                    value={settings.sequence.style}
+                    onChange={(event) =>
+                      onUpdateSetting("sequence", {
+                        ...settings.sequence,
+                        style: event.target.value as LoopSettings["sequence"]["style"],
+                      })
+                    }
+                  >
+                    {SEQUENCE_STYLE_OPTIONS.map((style) => (
+                      <option key={style} value={style}>
+                        {style}
+                      </option>
+                    ))}
+                  </Select>
+                </ControlField>
+
+                <ControlField label="Density" htmlFor="sequence-density">
+                  <Select
+                    id="sequence-density"
+                    value={settings.sequence.density}
+                    onChange={(event) =>
+                      onUpdateSetting("sequence", {
+                        ...settings.sequence,
+                        density: event.target.value as LoopSettings["sequence"]["density"],
+                      })
+                    }
+                  >
+                    {SEQUENCE_DENSITY_OPTIONS.map((density) => (
+                      <option key={density} value={density}>
+                        {density}
+                      </option>
+                    ))}
+                  </Select>
+                </ControlField>
+
+                <ControlField label="Variation" htmlFor="sequence-variation">
+                  <Select
+                    id="sequence-variation"
+                    value={settings.sequence.variation}
+                    onChange={(event) =>
+                      onUpdateSetting("sequence", {
+                        ...settings.sequence,
+                        variation: event.target.value as LoopSettings["sequence"]["variation"],
+                      })
+                    }
+                  >
+                    {SEQUENCE_VARIATION_OPTIONS.map((variation) => (
+                      <option key={variation} value={variation}>
+                        {variation}
+                      </option>
+                    ))}
+                  </Select>
+                </ControlField>
+              </div>
+            </div>
           </CardContent>
         </Card>
 

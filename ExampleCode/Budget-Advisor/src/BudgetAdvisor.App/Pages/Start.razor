@@ -1,0 +1,507 @@
+@page "/"
+@implements IDisposable
+@inject ApplicationState AppState
+@inject IDialogService DialogService
+@inject LocalizationService Localizer
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="status-banner">@statusMessage</div>
+}
+
+<section class="card-panel">
+    <div class="section-title-row">
+        <div>
+            <h2>@Localizer["start.latestMonth"]</h2>
+            <span class="section-note">@GetBudgetNote()</span>
+        </div>
+        <MudIconButton Icon="@Icons.Material.Filled.Settings"
+                       Size="Size.Small"
+                       Color="Color.Default"
+                       aria-label="@Localizer["start.budgetWidgetSettingsTitle"]"
+                       title="@Localizer["start.budgetWidgetSettingsTitle"]"
+                       OnClick="HandleOpenBudgetWidgetSettingsAsync" />
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card stat-card-income"><span>@Localizer["reporting.income"]</span><strong>@AppState.FormatCurrency(budgetOverview.Income)</strong></div>
+        <div class="stat-card"><span>@Localizer["reporting.housing"]</span><strong>@AppState.FormatCurrency(budgetOverview.Housing)</strong></div>
+        <div class="stat-card"><span>@Localizer["reporting.food"]</span><strong>@AppState.FormatCurrency(budgetOverview.Food)</strong></div>
+        <div class="stat-card"><span>@Localizer["reporting.transport"]</span><strong>@AppState.FormatCurrency(budgetOverview.Transport)</strong></div>
+        <div class="stat-card"><span>@Localizer["reporting.clothing"]</span><strong>@AppState.FormatCurrency(budgetOverview.Clothing)</strong></div>
+        <div class="stat-card"><span>@GetBudgetSavingsLabel()</span><strong>@AppState.FormatCurrency(GetBudgetWidgetValues().Savings)</strong></div>
+        <div class="stat-card"><span>@Localizer["reporting.other"]</span><strong>@AppState.FormatCurrency(budgetOverview.Other)</strong></div>
+        <div class="stat-card"><span>@Localizer["reporting.credits"]</span><strong>@AppState.FormatCurrency(budgetOverview.Credits)</strong></div>
+        <div class="@GetBalanceCardClass()">
+            <span>@GetBudgetBalanceLabel()</span>
+            <strong>@AppState.FormatCurrency(GetBudgetWidgetValues().Balance)</strong>
+        </div>
+    </div>
+</section>
+
+<section class="card-panel mt-4">
+    <div class="section-title-row">
+        <div>
+            <h2>@Localizer["start.keyMetrics"]</h2>
+            <span class="section-note">@GetMonthLabel(DateTime.Today.Year, DateTime.Today.Month)</span>
+        </div>
+        <MudIconButton Icon="@Icons.Material.Filled.Settings"
+                       Size="Size.Small"
+                       Color="Color.Default"
+                       aria-label="@Localizer["start.keyMetricsWidgetSettingsTitle"]"
+                       title="@Localizer["start.keyMetricsWidgetSettingsTitle"]"
+                       OnClick="HandleOpenKeyMetricsWidgetSettingsAsync" />
+    </div>
+
+    <div class="stats-grid">
+        @foreach (var metric in GetVisibleKeyMetricCards())
+        {
+            <div class="stat-card" @key="metric.Key">
+                <span>@metric.Label</span>
+                <strong class="metric-value-text">@metric.Value</strong>
+            </div>
+        }
+    </div>
+</section>
+
+<section class="card-panel mt-4">
+    <div class="section-title-row">
+        <h2>@Localizer["start.monthlyReport"]</h2>
+        <div class="report-filter-row">
+            <MudDatePicker Label="@Localizer["field.start"]"
+                           Date="@reportStartDate"
+                           DateChanged="HandleStartDateChanged"
+                           Variant="Variant.Outlined"
+                           PickerVariant="PickerVariant.Dialog" />
+            <MudDatePicker Label="@Localizer["field.end"]"
+                           Date="@reportEndDate"
+                           DateChanged="HandleEndDateChanged"
+                           Variant="Variant.Outlined"
+                           PickerVariant="PickerVariant.Dialog" />
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table app-table">
+            <thead>
+                <tr>
+                    <th>@Localizer["table.period"]</th>
+                    <th>@Localizer["reporting.income"]</th>
+                    <th>@Localizer["table.expenses"]</th>
+                    <th>@Localizer["table.housingLoans"]</th>
+                    <th>@Localizer["reporting.credits"]</th>
+                    <th>@Localizer["reporting.savings"]</th>
+                    <th>@Localizer["table.interest"]</th>
+                    <th>@Localizer["table.amortization"]</th>
+                    <th>@Localizer["table.balance"]</th>
+                    <th>
+                        <div class="report-actions-header">
+                            <span>@Localizer["field.actions"]</span>
+                            <div class="report-actions-header-buttons">
+                                <button class="btn btn-outline-primary btn-sm"
+                                        @onclick="HandleCloseAllMonthsAsync"
+                                        disabled="@(!reportRows.Any(row => !row.IsClosed))">@Localizer["action.markAllClosed"]</button>
+                                <button class="btn btn-outline-secondary btn-sm"
+                                        @onclick="HandleUndoAllMonthsAsync"
+                                        disabled="@(!reportRows.Any(row => row.IsClosed))">@Localizer["action.undoAllClosed"]</button>
+                            </div>
+                        </div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in reportRows)
+                {
+                    <tr>
+                        <td>@row.Period</td>
+                        <td>@AppState.FormatCurrency(row.Income)</td>
+                        <td>@AppState.FormatCurrency(row.Expenses)</td>
+                        <td>@AppState.FormatCurrency(row.HousingLoans)</td>
+                        <td>@AppState.FormatCurrency(row.Credits)</td>
+                        <td>@AppState.FormatCurrency(row.Savings)</td>
+                        <td>@AppState.FormatCurrency(row.Interest)</td>
+                        <td>@AppState.FormatCurrency(row.Amortization)</td>
+                        <td class="@GetReportBalanceCellClass(row)">@AppState.FormatCurrency(row.Balance)</td>
+                        <td>
+                            @if (row.IsClosed)
+                            {
+                                <button class="btn btn-outline-secondary btn-sm"
+                                        @onclick="() => HandleUndoCloseMonthAsync(new DateOnly(row.Year, row.Month, 1))">@Localizer["action.undo"]</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-outline-primary btn-sm"
+                                        @onclick="() => HandleCloseMonthAsync(new DateOnly(row.Year, row.Month, 1))">@Localizer["action.markClosed"]</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private BudgetOverview budgetOverview = new();
+    private DashboardKeyMetrics keyMetrics = new();
+    private IReadOnlyList<MonthlyReportRow> reportRows = [];
+    private DateTime? reportStartDate;
+    private DateTime? reportEndDate;
+    private string? statusMessage;
+
+    protected override void OnInitialized()
+    {
+        AppState.Changed += Reload;
+        Localizer.Changed += Reload;
+        LoadData();
+    }
+
+    private void LoadData()
+    {
+        budgetOverview = AppState.GetBudgetOverview();
+        keyMetrics = AppState.GetCurrentDashboardKeyMetrics();
+
+        if (!reportStartDate.HasValue && !reportEndDate.HasValue)
+        {
+            reportRows = AppState.GetMonthlyReportRows();
+            return;
+        }
+
+        var start = reportStartDate ?? reportEndDate ?? DateTime.Today;
+        var end = reportEndDate ?? reportStartDate ?? DateTime.Today;
+        reportRows = AppState.GetMonthlyReportRows(DateOnly.FromDateTime(start), DateOnly.FromDateTime(end));
+    }
+
+    private void Reload()
+    {
+        LoadData();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetMonthLabel(int year, int month) => $"{GetMonthName(month)} {year}";
+
+    private string GetMonthName(int month) => Localizer[$"month.{month}"];
+
+    private Task HandleStartDateChanged(DateTime? value)
+    {
+        reportStartDate = value ?? reportStartDate;
+        LoadData();
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private Task HandleEndDateChanged(DateTime? value)
+    {
+        reportEndDate = value ?? reportEndDate;
+        LoadData();
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleCloseMonthAsync(DateOnly month)
+    {
+        statusMessage = null;
+
+        var context = AppState.GetCloseMonthContext(month);
+        var parameters = new DialogParameters<CloseMonthDialog>
+        {
+            { dialog => dialog.Context, context },
+            { dialog => dialog.CurrencyFormatter, AppState.FormatCurrency }
+        };
+
+        var dialog = await DialogService.ShowAsync<CloseMonthDialog>(Localizer["closeMonth.title"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        if (result.Data is not CloseMonthDialog.CloseMonthDialogModel model)
+        {
+            return;
+        }
+
+        var wasClosed = await AppState.CloseMonthAsync(month, model.Action, model.SavingsAccountId);
+        statusMessage = wasClosed
+            ? Localizer["closeMonth.closed"]
+            : Localizer["closeMonth.alreadyClosed"];
+    }
+
+    private async Task HandleUndoCloseMonthAsync(DateOnly month)
+    {
+        statusMessage = null;
+
+        var wasUndone = await AppState.UndoCloseMonthAsync(month);
+        statusMessage = wasUndone
+            ? Localizer["closeMonth.undone"]
+            : Localizer["closeMonth.notClosed"];
+    }
+
+    private async Task HandleCloseAllMonthsAsync()
+    {
+        statusMessage = null;
+
+        var openMonths = reportRows
+            .Where(row => !row.IsClosed)
+            .OrderBy(row => row.Year)
+            .ThenBy(row => row.Month)
+            .Select(row => new DateOnly(row.Year, row.Month, 1))
+            .ToList();
+
+        var affectedCount = 0;
+        foreach (var month in openMonths)
+        {
+            if (await AppState.CloseMonthAsync(month, CloseMonthSurplusAction.DoNothing))
+            {
+                affectedCount++;
+            }
+        }
+
+        statusMessage = affectedCount > 0
+            ? string.Format(Localizer["closeMonth.bulkClosed"], affectedCount)
+            : Localizer["closeMonth.alreadyClosed"];
+    }
+
+    private async Task HandleUndoAllMonthsAsync()
+    {
+        statusMessage = null;
+
+        var closedMonths = reportRows
+            .Where(row => row.IsClosed)
+            .OrderByDescending(row => row.Year)
+            .ThenByDescending(row => row.Month)
+            .Select(row => new DateOnly(row.Year, row.Month, 1))
+            .ToList();
+
+        var affectedCount = 0;
+        foreach (var month in closedMonths)
+        {
+            if (await AppState.UndoCloseMonthAsync(month))
+            {
+                affectedCount++;
+            }
+        }
+
+        statusMessage = affectedCount > 0
+            ? string.Format(Localizer["closeMonth.bulkUndone"], affectedCount)
+            : Localizer["closeMonth.notClosed"];
+    }
+
+    private string GetBalanceCardClass()
+        => $"stat-card stat-card-balance-{GetBalanceVariant(budgetOverview.Income, GetBudgetWidgetValues().Balance)}";
+
+    private string GetReportBalanceCellClass(MonthlyReportRow row)
+        => $"report-balance-cell report-balance-{GetBalanceVariant(row.Income, row.Balance)}";
+
+    private static string GetBalanceVariant(decimal income, decimal balance)
+    {
+        if (balance == 0m)
+        {
+            return "neutral";
+        }
+
+        if (balance > 0m)
+        {
+            return "success";
+        }
+
+        var negativeBalanceRatio = income <= 0m
+            ? 1m
+            : Math.Abs(balance) / income;
+
+        return negativeBalanceRatio < 0.30m
+            ? "warning"
+            : "error";
+    }
+
+    private static string FormatPercentage(decimal value) => $"{value:P1}";
+
+    private BudgetWidgetValues GetBudgetWidgetValues()
+    {
+        if (!AppState.Data.UseSavingsToBalanceBudgetWidget)
+        {
+            return new BudgetWidgetValues(budgetOverview.Savings, budgetOverview.NetChange);
+        }
+
+        if (budgetOverview.NetChange > 0m)
+        {
+            return new BudgetWidgetValues(
+                budgetOverview.Savings + budgetOverview.NetChange,
+                0m);
+        }
+
+        if (budgetOverview.NetChange < 0m)
+        {
+            var savingsReduction = Math.Min(budgetOverview.Savings, Math.Abs(budgetOverview.NetChange));
+            return new BudgetWidgetValues(
+                budgetOverview.Savings - savingsReduction,
+                budgetOverview.NetChange + savingsReduction);
+        }
+
+        return new BudgetWidgetValues(budgetOverview.Savings, 0m);
+    }
+
+    private string GetBudgetSavingsLabel() =>
+        AppState.Data.UseSavingsToBalanceBudgetWidget
+            ? Localizer["start.weightedSavings"]
+            : Localizer["reporting.savings"];
+
+    private string GetBudgetBalanceLabel() =>
+        AppState.Data.UseSavingsToBalanceBudgetWidget
+            ? Localizer["start.weightedBalance"]
+            : Localizer["table.balance"];
+
+    private IReadOnlyList<KeyMetricCard> GetVisibleKeyMetricCards() =>
+        AppState.Data.DashboardKeyMetricPreferences
+            .Where(preference => preference.IsVisible)
+            .Select(MapKeyMetricCard)
+            .ToList();
+
+    private async Task HandleOpenBudgetWidgetSettingsAsync()
+    {
+        var parameters = new DialogParameters<BudgetWidgetSettingsDialog>
+        {
+            { dialog => dialog.UseSavingsToBalance, AppState.Data.UseSavingsToBalanceBudgetWidget }
+        };
+
+        var dialog = await DialogService.ShowAsync<BudgetWidgetSettingsDialog>(Localizer["start.budgetWidgetSettingsTitle"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        if (result?.Data is not bool useSavingsToBalance)
+        {
+            return;
+        }
+
+        await AppState.SetUseSavingsToBalanceBudgetWidgetAsync(useSavingsToBalance);
+    }
+
+    private async Task HandleOpenKeyMetricsWidgetSettingsAsync()
+    {
+        var parameters = new DialogParameters<KeyMetricsWidgetSettingsDialog>
+        {
+            {
+                dialog => dialog.Preferences,
+                AppState.Data.DashboardKeyMetricPreferences
+                    .Select(preference => new DashboardKeyMetricPreference
+                    {
+                        Key = preference.Key,
+                        IsVisible = preference.IsVisible
+                    })
+                    .ToList()
+            }
+        };
+
+        var dialog = await DialogService.ShowAsync<KeyMetricsWidgetSettingsDialog>(Localizer["start.keyMetricsWidgetSettingsTitle"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        if (result?.Data is not IReadOnlyList<DashboardKeyMetricPreference> preferences)
+        {
+            return;
+        }
+
+        await AppState.SetDashboardKeyMetricPreferencesAsync(preferences);
+    }
+
+    private KeyMetricCard MapKeyMetricCard(DashboardKeyMetricPreference preference) => preference.Key switch
+    {
+        DashboardKeyMetricPreference.LoanToValueRatioKey => new(preference.Key, Localizer["metrics.loanToValueRatio"], FormatPercentage(keyMetrics.LoanToValueRatio)),
+        DashboardKeyMetricPreference.HousingLoansKey => new(preference.Key, Localizer["metrics.housingLoansTotal"], AppState.FormatCurrency(keyMetrics.HousingLoans)),
+        DashboardKeyMetricPreference.PropertyValueKey => new(preference.Key, Localizer["metrics.propertyValue"], AppState.FormatCurrency(keyMetrics.PropertyValue)),
+        DashboardKeyMetricPreference.CreditsKey => new(preference.Key, Localizer["start.currentMonthCredits"], AppState.FormatCurrency(keyMetrics.Credits)),
+        DashboardKeyMetricPreference.SavingsKey => new(preference.Key, Localizer["metrics.savingsTotal"], AppState.FormatCurrency(keyMetrics.Savings)),
+        DashboardKeyMetricPreference.InterestKey => new(preference.Key, Localizer["metrics.interestMonth"], AppState.FormatCurrency(keyMetrics.Interest)),
+        DashboardKeyMetricPreference.AmortizationKey => new(preference.Key, Localizer["metrics.amortizationMonth"], AppState.FormatCurrency(keyMetrics.Amortization)),
+        DashboardKeyMetricPreference.BalanceKey => new(preference.Key, Localizer["metrics.savingsMinusLoans"], AppState.FormatCurrency(keyMetrics.Balance)),
+        DashboardKeyMetricPreference.LeasingKey => new(preference.Key, GetLeasingMetricLabel(), GetLeasingMetricValue()),
+        DashboardKeyMetricPreference.AverageSalaryKey => new(preference.Key, Localizer["metrics.averageSalary"], AppState.FormatCurrency(keyMetrics.AverageSalary)),
+        DashboardKeyMetricPreference.AverageElectricityKey => new(preference.Key, Localizer["metrics.electricity"], AppState.FormatCurrency(keyMetrics.AverageElectricity)),
+        DashboardKeyMetricPreference.AverageFuelKey => new(preference.Key, Localizer["metrics.fuel"], AppState.FormatCurrency(keyMetrics.AverageFuel)),
+        DashboardKeyMetricPreference.AverageInsuranceKey => new(preference.Key, Localizer["metrics.insurance"], AppState.FormatCurrency(keyMetrics.AverageInsurance)),
+        _ => new(preference.Key, preference.Key, string.Empty)
+    };
+
+    private string GetLeasingMetricLabel()
+    {
+        var vehicleName = keyMetrics.LeasingVehicleName?.Trim() ?? string.Empty;
+        return string.IsNullOrWhiteSpace(vehicleName)
+            ? Localizer["metrics.leasing"]
+            : $"{Localizer["metrics.leasing"]} {vehicleName}";
+    }
+
+    private string GetLeasingMetricValue()
+    {
+        if (!keyMetrics.LeasingEndYear.HasValue || !keyMetrics.LeasingEndMonth.HasValue)
+        {
+            return keyMetrics.LeasingMonthsRemaining.ToString();
+        }
+
+        return $"{keyMetrics.LeasingEndYear:0000}/{keyMetrics.LeasingEndMonth:00} ({keyMetrics.LeasingMonthsRemaining})";
+    }
+
+    private string GetBudgetNote()
+    {
+        if (budgetOverview.ClosedMonthCount == 0 ||
+            !budgetOverview.StartYear.HasValue ||
+            !budgetOverview.StartMonth.HasValue ||
+            !budgetOverview.EndYear.HasValue ||
+            !budgetOverview.EndMonth.HasValue)
+        {
+            return Localizer["closeMonth.noClosedMonths"];
+        }
+
+        if (budgetOverview.ClosedMonthCount == 1)
+        {
+            return GetMonthLabel(budgetOverview.EndYear.Value, budgetOverview.EndMonth.Value);
+        }
+
+        return $"{GetMonthLabel(budgetOverview.StartYear.Value, budgetOverview.StartMonth.Value)} - {GetMonthLabel(budgetOverview.EndYear.Value, budgetOverview.EndMonth.Value)}";
+    }
+
+    public void Dispose()
+    {
+        AppState.Changed -= Reload;
+        Localizer.Changed -= Reload;
+    }
+
+    private sealed record BudgetWidgetValues(decimal Savings, decimal Balance);
+    private sealed record KeyMetricCard(string Key, string Label, string Value);
+}
+
+
+<style>
+    .report-actions-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .report-actions-header-buttons {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+</style>

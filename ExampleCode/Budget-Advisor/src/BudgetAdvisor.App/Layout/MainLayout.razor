@@ -1,0 +1,317 @@
+﻿@inherits LayoutComponentBase
+@implements IDisposable
+@inject ApplicationState AppState
+@inject LocalizationService Localizer
+@inject IApplicationLogService ApplicationLogService
+@inject ManualSyncService SyncService
+@inject IUndoService UndoService
+@inject IDialogService DialogService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@using BudgetAdvisor.App.Theming
+@using BudgetAdvisor.Domain.Theming
+
+<MudThemeProvider Theme="@AppThemes.GetTheme(AppState.Data.ThemeMode)" IsDarkMode="@AppThemeNames.IsDark(AppState.Data.ThemeMode)" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<div class="page-shell">
+    <main class="main-panel">
+        <header class="top-bar">
+            <div class="brand-header">
+                <img class="brand-icon" src="favicon.svg" alt="Budget Advisor" />
+                <div>
+                    <div class="app-title-row">
+                        <div class="app-title">@Localizer["app.title"]</div>
+                        <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined">v1.0</MudChip>
+                        @if (UndoService.CanUndo)
+                        {
+                            <MudButton Variant="Variant.Text"
+                                       Color="Color.Default"
+                                       StartIcon="@Icons.Material.Filled.Undo"
+                                       OnClick="HandleUndoAsync">
+                                @GetUndoLabel()
+                            </MudButton>
+                        }
+                        @if (SyncService.Metadata.IsConnected)
+                        {
+                            <MudTooltip Text="@Localizer["sync.cloudStorage"]">
+                                <MudButton Variant="Variant.Text"
+                                           Color="Color.Default"
+                                           Class="sync-provider-button"
+                                           OnClick="HandleOpenCloudSyncAsync"
+                                           aria-label="@Localizer["sync.cloudStorage"]">
+                                    <img class="sync-provider-button-image" src="images/dropbox.png" alt="@Localizer["sync.cloudStorage"]" />
+                                </MudButton>
+                            </MudTooltip>
+                        }
+                    </div>
+                    <div class="eyebrow">Budget Advisor - @GetCurrentSectionTitle()</div>
+                </div>
+            </div>
+            <div class="top-bar-language">
+                <div class="language-flags" role="group" aria-label="@Localizer["settings.language"]">
+                    @foreach (var language in Localizer.Languages)
+                    {
+                        var isCurrentLanguage = string.Equals(language, Localizer.CurrentLanguage, StringComparison.OrdinalIgnoreCase);
+                        <MudButton Class="@GetLanguageButtonClass(isCurrentLanguage)"
+                                   Variant="@(isCurrentLanguage ? Variant.Filled : Variant.Outlined)"
+                                   Color="Color.Default"
+                                   OnClick="@(() => HandleLanguageChangedAsync(language))">
+                            <img class="language-flag" src="@($"localization/{language}.png")" alt="@Localizer[$"language.{language}"]" />
+                        </MudButton>
+                    }
+                </div>
+                <div class="top-bar-meta">
+                    <MudChip T="string" Color="Color.Primary" Variant="Variant.Text">@Localizer.CurrentLanguage.ToUpperInvariant()</MudChip>
+                    <MudChip T="string" Color="Color.Secondary" Variant="Variant.Text">@AppState.Data.CurrencyCode</MudChip>
+                </div>
+            </div>
+        </header>
+
+        <nav class="tab-bar">
+                <MudTabs Class="nav-tabs-shell"
+                     ActivePanelIndex="@GetCurrentTabIndex()"
+                     ActivePanelIndexChanged="HandleTabChangedAsync"
+                     Rounded="true"
+                     SliderColor="Color.Primary"
+                     Elevation="0">
+                <MudTabPanel Text="@Localizer["nav.start"]" Icon="@Icons.Material.Filled.SpaceDashboard" />
+                <MudTabPanel Text="@Localizer["nav.analysis"]" Icon="@Icons.Material.Filled.Search" />
+                <MudTabPanel Text="@Localizer["nav.household"]" Icon="@Icons.Material.Filled.Groups" />
+                <MudTabPanel Text="@Localizer["nav.housingTab"]" Icon="@Icons.Material.Filled.HomeWork" />
+                <MudTabPanel Text="@Localizer["nav.transport"]" Icon="@Icons.Material.Filled.DirectionsCar" />
+                <MudTabPanel Text="@Localizer["nav.expenses"]" Icon="@Icons.Material.Filled.ReceiptLong" />
+                <MudTabPanel Text="@Localizer["nav.credits"]" Icon="@Icons.Material.Filled.CreditCard" />
+                <MudTabPanel Text="@Localizer["nav.savings"]" Icon="@Icons.Material.Filled.Savings" />
+                <MudTabPanel Text="@Localizer["nav.import"]" Icon="@Icons.Material.Filled.UploadFile" />
+                <MudTabPanel Text="@Localizer["nav.settings"]" Icon="@Icons.Material.Filled.Settings" />
+                <MudTabPanel Text="@Localizer["nav.help"]" Icon="@Icons.Material.Filled.Help" />
+            </MudTabs>
+        </nav>
+
+        <article class="page-content">
+            @Body
+        </article>
+    </main>
+</div>
+
+@if (SyncService.IsBusy)
+{
+    <div class="cloud-sync-floating-progress">
+        <MudPaper Elevation="6" Class="cloud-sync-floating-progress-shell">
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.body1">@GetSyncProgressText()</MudText>
+                <MudProgressLinear Color="Color.Primary" Indeterminate="true" Rounded="true" />
+            </MudStack>
+        </MudPaper>
+    </div>
+}
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        Localizer.Changed += HandleChanged;
+        AppState.Changed += HandleChanged;
+        ApplicationLogService.Changed += HandleChanged;
+        SyncService.Changed += HandleChanged;
+        UndoService.Changed += HandleChanged;
+        NavigationManager.LocationChanged += HandleLocationChanged;
+        await SyncService.InitializeAsync();
+    }
+
+    private async Task HandleLanguageChangedAsync(string languageCode)
+    {
+        await Localizer.SetLanguageAsync(languageCode);
+    }
+
+    private static string GetLanguageButtonClass(bool isSelected) =>
+        isSelected ? "language-flag-button selected" : "language-flag-button";
+
+    private async Task HandleUndoAsync()
+    {
+        await AppState.UndoLastChangeAsync();
+    }
+
+    private async Task HandleOpenCloudSyncAsync()
+    {
+        await SyncService.RefreshAsync();
+
+        var parameters = new DialogParameters<CloudSyncDialog>
+        {
+            { dialog => dialog.ConnectedAccountName, GetConnectedAccountText() },
+            { dialog => dialog.LastUploadText, FormatSyncTimestamp(SyncService.Metadata.LastUploadUtc) },
+            { dialog => dialog.LastDownloadText, FormatSyncTimestamp(SyncService.Metadata.LastDownloadUtc) },
+            { dialog => dialog.IsBusy, SyncService.IsBusy },
+            { dialog => dialog.ProgressText, GetSyncProgressText() }
+        };
+
+        var dialog = await DialogService.ShowAsync<CloudSyncDialog>(Localizer["sync.provider.dropbox"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        var action = result.Data?.ToString();
+        if (string.Equals(action, "upload", StringComparison.OrdinalIgnoreCase))
+        {
+            await ShowSyncResultAsync(await SyncService.UploadAsync(DropboxSyncProvider.ProviderIdValue));
+            return;
+        }
+
+        if (string.Equals(action, "download", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleDownloadFromDialogAsync();
+        }
+    }
+
+    private async Task HandleDownloadFromDialogAsync()
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { dialog => dialog.Title, Localizer["sync.downloadConfirmTitle"] },
+            { dialog => dialog.Message, Localizer["sync.downloadConfirmMessage"] },
+            { dialog => dialog.ConfirmText, Localizer["sync.download"] },
+            { dialog => dialog.CancelText, Localizer["action.cancel"] },
+            { dialog => dialog.ConfirmColor, Color.Warning }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(Localizer["sync.downloadConfirmTitle"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        await ShowSyncResultAsync(await SyncService.DownloadAsync(DropboxSyncProvider.ProviderIdValue));
+    }
+
+    private async Task ShowSyncResultAsync(BudgetAdvisor.Domain.Models.SyncResult result)
+    {
+        await SyncService.RefreshAsync();
+        Snackbar.Add(result.Message, result.IsSuccess ? Severity.Success : Severity.Error);
+    }
+
+    private string GetUndoLabel()
+    {
+        var latestActivity = ApplicationLogService.Entries.FirstOrDefault()?.Activity;
+        return string.IsNullOrWhiteSpace(latestActivity)
+            ? Localizer["action.undo"]
+            : $"{Localizer["action.undo"]} {latestActivity}";
+    }
+
+    private string GetCurrentSectionTitle()
+    {
+        var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Split('?', '#')[0].Trim('/');
+
+        return relativePath.ToLowerInvariant() switch
+        {
+            "" => Localizer["nav.start"],
+            "analysis" => Localizer["nav.analysis"],
+            "household" => Localizer["nav.household"],
+            "housing" => Localizer["nav.housingTab"],
+            "transport" => Localizer["nav.transport"],
+            "expenses" => Localizer["nav.expenses"],
+            "credits" or "debts" => Localizer["nav.credits"],
+            "savings" => Localizer["nav.savings"],
+            "import" => Localizer["nav.import"],
+            "tools" => Localizer["nav.settings"],
+            "settings" => Localizer["nav.settings"],
+            "help" => Localizer["nav.help"],
+            _ => Localizer["common.notFound"]
+        };
+    }
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
+        InvokeAsync(StateHasChanged);
+
+    private string GetConnectedAccountText() =>
+        string.IsNullOrWhiteSpace(SyncService.Metadata.ConnectedAccountName)
+            ? Localizer["sync.notAvailable"]
+            : SyncService.Metadata.ConnectedAccountName;
+
+    private string FormatSyncTimestamp(DateTimeOffset? timestampUtc) =>
+        timestampUtc.HasValue
+            ? timestampUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+            : Localizer["sync.never"];
+
+    private string GetSyncProgressText() => SyncService.ActiveOperation switch
+    {
+        "Connect" => Localizer["sync.progress.connect"],
+        "Upload" => Localizer["sync.progress.upload"],
+        "Download" => Localizer["sync.progress.download"],
+        _ => Localizer["sync.progress.default"]
+    };
+
+    private int GetCurrentTabIndex()
+    {
+        var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Split('?', '#')[0].Trim('/');
+
+        return relativePath.ToLowerInvariant() switch
+        {
+            "" => 0,
+            "analysis" => 1,
+            "household" => 2,
+            "housing" => 3,
+            "transport" => 4,
+            "expenses" => 5,
+            "credits" or "debts" => 6,
+            "savings" => 7,
+            "import" => 8,
+            "tools" or "settings" => 9,
+            "help" => 10,
+            _ => 0
+        };
+    }
+
+    private Task HandleTabChangedAsync(int tabIndex)
+    {
+        var targetUri = tabIndex switch
+        {
+            0 => "",
+            1 => "analysis",
+            2 => "household",
+            3 => "housing",
+            4 => "transport",
+            5 => "expenses",
+            6 => "credits",
+            7 => "savings",
+            8 => "import",
+            9 => "settings",
+            10 => "help",
+            _ => ""
+        };
+
+        var currentUri = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Split('?', '#')[0].Trim('/');
+        if (!string.Equals(currentUri, targetUri, StringComparison.OrdinalIgnoreCase))
+        {
+            NavigationManager.NavigateTo(targetUri);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void HandleChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Localizer.Changed -= HandleChanged;
+        AppState.Changed -= HandleChanged;
+        ApplicationLogService.Changed -= HandleChanged;
+        SyncService.Changed -= HandleChanged;
+        UndoService.Changed -= HandleChanged;
+        NavigationManager.LocationChanged -= HandleLocationChanged;
+    }
+}

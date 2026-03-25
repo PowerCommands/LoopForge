@@ -1,4 +1,5 @@
 import { Note, Scale } from "tonal";
+import { createBaseSequencePattern, createPatternForBar, getSequenceWindows } from "./sequence";
 import type {
   ChordEvent,
   GeneratedLoop,
@@ -36,38 +37,17 @@ interface ProgressionTemplate {
   degrees: RomanDegree[];
 }
 
+interface MoodProfile {
+  chordFamily: "standard" | "dark" | "bright" | "sparse" | "intense" | "calm";
+  melodyStepwiseChance: number;
+  melodyVelocity: number;
+  melodyOctaves: number[];
+  bassVelocity: number;
+}
+
 interface BassTarget {
   note: string;
   octave: number;
-  duration: number;
-  timeOffset: number;
-}
-
-interface MoodProfile {
-  chordFamily: "standard" | "dark" | "bright" | "sparse" | "intense" | "calm";
-  melodyBeats: number[];
-  melodyStepwiseChance: number;
-  melodyDuration: number;
-  melodyVelocity: number;
-  melodyOctaves: number[];
-  bassPattern: "simple" | "steady" | "lifted" | "driving";
-  bassVelocity: number;
-  hookChance: number;
-  hookVariationChance: number;
-  hookLength: 2 | 3 | 4;
-}
-
-interface HookNote {
-  beat: number;
-  note: string;
-  duration: number;
-  velocity: number;
-}
-
-interface HookPlan {
-  captureBar: number;
-  reuseBar: number;
-  varyReuse: boolean;
 }
 
 const MAJOR_DEGREE_ORDER: RomanDegree[] = ["I", "ii", "iii", "IV", "V", "vi", "vii"];
@@ -144,83 +124,60 @@ const MINOR_TEMPLATES: Record<"standard" | "dark" | "bright" | "sparse" | "inten
 const MOOD_PROFILES: Record<Mood, MoodProfile> = {
   Balanced: {
     chordFamily: "standard",
-    melodyBeats: [0, 1, 2, 3],
     melodyStepwiseChance: 0.65,
-    melodyDuration: 1,
     melodyVelocity: 0.76,
     melodyOctaves: [4, 4, 5, 5],
-    bassPattern: "steady",
     bassVelocity: 0.86,
-    hookChance: 0.45,
-    hookVariationChance: 0.35,
-    hookLength: 3,
   },
   Dark: {
     chordFamily: "dark",
-    melodyBeats: [0, 1, 2, 3],
     melodyStepwiseChance: 0.82,
-    melodyDuration: 0.95,
     melodyVelocity: 0.7,
     melodyOctaves: [4, 4, 4, 5],
-    bassPattern: "steady",
     bassVelocity: 0.8,
-    hookChance: 0.5,
-    hookVariationChance: 0.3,
-    hookLength: 3,
   },
   Bright: {
     chordFamily: "bright",
-    melodyBeats: [0, 1, 2, 3],
     melodyStepwiseChance: 0.42,
-    melodyDuration: 0.85,
     melodyVelocity: 0.82,
     melodyOctaves: [4, 5, 5, 5],
-    bassPattern: "lifted",
     bassVelocity: 0.88,
-    hookChance: 0.65,
-    hookVariationChance: 0.45,
-    hookLength: 4,
   },
   Sparse: {
     chordFamily: "sparse",
-    melodyBeats: [0, 2],
     melodyStepwiseChance: 0.85,
-    melodyDuration: 1.4,
     melodyVelocity: 0.62,
     melodyOctaves: [4, 4, 5],
-    bassPattern: "simple",
     bassVelocity: 0.72,
-    hookChance: 0.35,
-    hookVariationChance: 0.2,
-    hookLength: 2,
   },
   Intense: {
     chordFamily: "intense",
-    melodyBeats: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5],
     melodyStepwiseChance: 0.35,
-    melodyDuration: 0.45,
     melodyVelocity: 0.84,
     melodyOctaves: [4, 5, 5, 5],
-    bassPattern: "driving",
     bassVelocity: 0.9,
-    hookChance: 0.6,
-    hookVariationChance: 0.6,
-    hookLength: 4,
   },
   Calm: {
     chordFamily: "calm",
-    melodyBeats: [0, 2],
     melodyStepwiseChance: 0.9,
-    melodyDuration: 1.75,
     melodyVelocity: 0.6,
     melodyOctaves: [4, 4, 4, 5],
-    bassPattern: "simple",
     bassVelocity: 0.7,
-    hookChance: 0.4,
-    hookVariationChance: 0.2,
-    hookLength: 2,
   },
 };
+
+const MELODY_CONTOUR_POOLS = {
+  straight: [0, 1, -1, 1, -1, 2, -2],
+  syncopated: [0, 2, -2, 1, -1, 3, -3],
+  flowing: [0, 1, 1, -1, 2, -2],
+  "arp-like": [0, 2, 2, -1, -2, 1],
+} as const;
+
+const VARIATION_CHANGE_CHANCE = {
+  low: 0.16,
+  medium: 0.32,
+  high: 0.5,
+} as const;
 
 export function generateLoop(settings: LoopSettings): GeneratedLoop {
   const profile = MOOD_PROFILES[settings.mood];
@@ -233,8 +190,8 @@ export function generateLoop(settings: LoopSettings): GeneratedLoop {
     settings,
     totalBeats: settings.length * 4,
     chords: settings.layers.chords ? progression : [],
-    melody: settings.layers.melody ? buildMelody(progression, scaleNotes, profile) : [],
-    bass: settings.layers.bass ? buildBass(progression, scaleNotes, profile) : [],
+    melody: settings.layers.melody ? buildMelody(progression, scaleNotes, settings, profile) : [],
+    bass: settings.layers.bass ? buildBass(progression, scaleNotes, settings, profile) : [],
   };
 }
 
@@ -303,282 +260,288 @@ function compressTemplate(degrees: RomanDegree[]): RomanDegree[] {
   return [degrees[0], degrees[2]];
 }
 
-function buildMelody(progression: ChordEvent[], scaleNotes: string[], profile: MoodProfile): TimedNote[] {
+function buildMelody(
+  progression: ChordEvent[],
+  scaleNotes: string[],
+  settings: LoopSettings,
+  profile: MoodProfile,
+): TimedNote[] {
   const melody: TimedNote[] = [];
-  const hookPlan = createHookPlan(progression.length, profile);
-  let storedHook: HookNote[] | null = null;
+  const basePattern = createBaseSequencePattern("melody", settings.sequence);
+  let motifContour: number[] | null = null;
   let previousPitchClass: string | null = null;
 
   progression.forEach((chord, barIndex) => {
-    const shouldReuseHook = hookPlan !== null && storedHook !== null && hookPlan.reuseBar === barIndex;
-    const activeHook = shouldReuseHook ? storedHook : null;
-    const barNotes = shouldReuseHook
-      ? buildHookBarNotes(chord, activeHook as HookNote[], scaleNotes, profile, hookPlan!.varyReuse)
-      : buildMelodyBarNotes(chord, scaleNotes, profile, previousPitchClass);
+    const pattern = createPatternForBar(basePattern, "melody", settings.sequence, barIndex);
+    const windows = getSequenceWindows(pattern);
 
-    if (hookPlan !== null && hookPlan.captureBar === barIndex) {
-      storedHook = captureHook(barNotes, profile.hookLength);
+    if (windows.length === 0) {
+      return;
     }
 
-    if (barNotes.length > 0) {
-      previousPitchClass = Note.pitchClass(barNotes[barNotes.length - 1].note);
-      melody.push(...barNotes);
+    const contour = motifContour
+      ? varyMelodyContour(motifContour, windows.length, settings)
+      : createMelodyContour(windows.length, settings, profile);
+
+    if (!motifContour) {
+      motifContour = [...contour];
     }
+
+    windows.forEach((window, noteIndex) => {
+      const isStrongAccent = window.startBeat === 0 || window.startBeat === 2;
+      const note = chooseMelodyNote(
+        chord,
+        scaleNotes,
+        previousPitchClass,
+        contour[noteIndex] ?? 0,
+        noteIndex,
+        isStrongAccent,
+        settings,
+        profile,
+      );
+
+      previousPitchClass = Note.pitchClass(note);
+
+      melody.push({
+        note,
+        time: chord.time + window.startBeat,
+        duration: Math.max(0.25, window.durationBeats),
+        velocity: chooseMelodyVelocity(window.startBeat, noteIndex, settings, profile),
+      });
+    });
   });
 
   return melody;
 }
 
-function createHookPlan(barCount: number, profile: MoodProfile): HookPlan | null {
-  if (barCount < 2 || Math.random() >= profile.hookChance) {
-    return null;
-  }
-
-  const captureBar = 0;
-  const reuseBar = barCount > 2 ? barCount - 1 : 1;
-
-  return {
-    captureBar,
-    reuseBar,
-    varyReuse: Math.random() < profile.hookVariationChance,
-  };
-}
-
-function buildMelodyBarNotes(
-  chord: ChordEvent,
+function buildBass(
+  progression: ChordEvent[],
   scaleNotes: string[],
+  settings: LoopSettings,
   profile: MoodProfile,
-  previousPitchClass: string | null,
 ): TimedNote[] {
-  const barNotes: TimedNote[] = [];
-  let currentPitchClass = previousPitchClass;
+  const bass: TimedNote[] = [];
+  const basePattern = createBaseSequencePattern("bass", settings.sequence);
 
-  profile.melodyBeats.forEach((beat, stepIndex) => {
-    const isStrongBeat = beat === 0 || beat === 2;
-    const chordTones = chord.notes.map((note) => Note.pitchClass(note));
-    const noteName = chooseMelodyPitchClass(
-      scaleNotes,
-      chordTones,
-      currentPitchClass,
-      isStrongBeat,
-      profile,
-    );
+  progression.forEach((chord, barIndex) => {
+    const pattern = createPatternForBar(basePattern, "bass", settings.sequence, barIndex);
+    const windows = getSequenceWindows(pattern);
+    const nextChord = progression[(barIndex + 1) % progression.length] ?? chord;
 
-    currentPitchClass = noteName;
+    windows.forEach((window, noteIndex) => {
+      const target = chooseBassTarget(chord, nextChord, scaleNotes, noteIndex, windows.length, window.startBeat, settings);
 
-    barNotes.push({
-      note: `${noteName}${chooseMelodyOctave(stepIndex, profile)}`,
-      time: chord.time + beat,
-      duration: chooseMelodyDuration(beat, profile),
-      velocity: chooseMelodyVelocity(isStrongBeat, profile),
+      bass.push({
+        note: `${target.note}${target.octave}`,
+        time: chord.time + window.startBeat,
+        duration: Math.max(0.25, window.durationBeats),
+        velocity: chooseBassVelocity(window.startBeat, noteIndex, profile, settings),
+      });
     });
   });
 
-  return barNotes;
+  return bass;
 }
 
-function captureHook(barNotes: TimedNote[], hookLength: number): HookNote[] | null {
-  const motif = barNotes.slice(0, Math.min(hookLength, barNotes.length)).map((note) => ({
-    beat: note.time % 4,
-    note: note.note,
-    duration: note.duration,
-    velocity: note.velocity,
-  }));
+function createMelodyContour(noteCount: number, settings: LoopSettings, profile: MoodProfile): number[] {
+  const pool = MELODY_CONTOUR_POOLS[settings.sequence.style];
 
-  return motif.length >= 2 ? motif : null;
-}
-
-function buildHookBarNotes(
-  chord: ChordEvent,
-  hook: HookNote[],
-  scaleNotes: string[],
-  profile: MoodProfile,
-  varyReuse: boolean,
-): TimedNote[] {
-  const chordTones = chord.notes.map((note) => Note.pitchClass(note));
-
-  return hook.map((hookNote, index) => {
-    const transformed = varyReuse
-      ? varyHookNote(hookNote, index, hook.length, scaleNotes, chordTones, profile)
-      : { ...hookNote };
-    const beat = profile.melodyBeats.includes(transformed.beat) ? transformed.beat : profile.melodyBeats[index] ?? transformed.beat;
-
-    return {
-      note: transformed.note,
-      time: chord.time + beat,
-      duration: transformed.duration,
-      velocity: transformed.velocity,
-    };
-  });
-}
-
-function varyHookNote(
-  hookNote: HookNote,
-  index: number,
-  hookLength: number,
-  scaleNotes: string[],
-  chordTones: string[],
-  profile: MoodProfile,
-): HookNote {
-  const pitchClass = Note.pitchClass(hookNote.note);
-  const octave = Number(hookNote.note.slice(-1));
-  const scaleIndex = scaleNotes.indexOf(pitchClass);
-
-  if (scaleIndex === -1) {
-    return hookNote;
-  }
-
-  const isStrongBeat = hookNote.beat === 0 || hookNote.beat === 2;
-  const isLastNote = index === hookLength - 1;
-  const direction = profile.melodyStepwiseChance >= 0.7 || Math.random() > 0.5 ? 1 : -1;
-  let nextPitchClass = pitchClass;
-
-  if (index === 0) {
-    nextPitchClass = scaleNotes[(scaleIndex + direction + scaleNotes.length) % scaleNotes.length];
-  } else if (index === 1 && profile.melodyStepwiseChance < 0.6) {
-    nextPitchClass = scaleNotes[(scaleIndex - direction + scaleNotes.length) % scaleNotes.length];
-  } else if (isLastNote) {
-    nextPitchClass = chordTones[0] ?? pitchClass;
-  }
-
-  const resolvedPitchClass = isStrongBeat
-    ? ensureChordTone(nextPitchClass, chordTones)
-    : ensureScaleTone(nextPitchClass, scaleNotes);
-
-  return {
-    beat: hookNote.beat,
-    note: `${resolvedPitchClass}${octave}`,
-    duration: Math.max(0.35, hookNote.duration),
-    velocity: hookNote.velocity + (profile.melodyVelocity > 0.8 ? 0.03 : -0.02),
-  };
-}
-
-function ensureChordTone(note: string, chordTones: string[]): string {
-  if (chordTones.includes(note)) {
-    return note;
-  }
-
-  return chordTones[0] ?? note;
-}
-
-function ensureScaleTone(note: string, scaleNotes: string[]): string {
-  if (scaleNotes.includes(note)) {
-    return note;
-  }
-
-  return scaleNotes[0] ?? note;
-}
-
-function chooseMelodyPitchClass(
-  scaleNotes: string[],
-  chordTones: string[],
-  previousNote: string | null,
-  isStrongBeat: boolean,
-  profile: MoodProfile,
-): string {
-  if (!previousNote) {
-    return isStrongBeat ? chordTones[0] : pickRandom(scaleNotes);
-  }
-
-  const noteIndex = scaleNotes.indexOf(previousNote);
-
-  if (noteIndex === -1) {
-    return isStrongBeat ? pickRandom(chordTones) : pickRandom(scaleNotes);
-  }
-
-  const stepwiseCandidates = [
-    scaleNotes[(noteIndex + 1) % scaleNotes.length],
-    scaleNotes[(noteIndex + scaleNotes.length - 1) % scaleNotes.length],
-  ];
-  const leapCandidates = [
-    scaleNotes[(noteIndex + 2) % scaleNotes.length],
-    scaleNotes[(noteIndex + scaleNotes.length - 2) % scaleNotes.length],
-    scaleNotes[(noteIndex + 3) % scaleNotes.length],
-    scaleNotes[(noteIndex + scaleNotes.length - 3) % scaleNotes.length],
-  ];
-  const prefersStepwise = Math.random() < profile.melodyStepwiseChance;
-  const motionCandidates = prefersStepwise ? stepwiseCandidates : leapCandidates;
-
-  if (isStrongBeat) {
-    const harmonicTargets = motionCandidates.filter((note) => chordTones.includes(note));
-
-    if (harmonicTargets.length > 0) {
-      return pickRandom(harmonicTargets);
+  return Array.from({ length: noteCount }, (_, index) => {
+    if (index === 0) {
+      return 0;
     }
 
-    return pickRandom(chordTones);
-  }
+    if (Math.random() < profile.melodyStepwiseChance) {
+      return pickRandom([0, 1, -1, 1, -1, 2, -2]);
+    }
 
-  const passingTargets = motionCandidates.filter((note) => !chordTones.includes(note));
-
-  if (passingTargets.length > 0) {
-    return pickRandom(passingTargets);
-  }
-
-  return pickRandom(scaleNotes);
-}
-
-function chooseMelodyOctave(stepIndex: number, profile: MoodProfile): number {
-  return profile.melodyOctaves[stepIndex % profile.melodyOctaves.length];
-}
-
-function chooseMelodyDuration(beat: number, profile: MoodProfile): number {
-  const strongBeat = beat === 0 || beat === 2;
-  const duration = strongBeat ? profile.melodyDuration : profile.melodyDuration * 0.85;
-
-  return Math.max(0.35, Math.min(duration, 2));
-}
-
-function chooseMelodyVelocity(isStrongBeat: boolean, profile: MoodProfile): number {
-  return isStrongBeat ? profile.melodyVelocity + 0.04 : profile.melodyVelocity - 0.04;
-}
-
-function buildBass(progression: ChordEvent[], scaleNotes: string[], profile: MoodProfile): TimedNote[] {
-  return progression.flatMap((chord) => {
-    const rootPitchClass = Note.pitchClass(chord.root);
-    const rootIndex = scaleNotes.indexOf(rootPitchClass);
-    const fifthPitchClass = rootIndex >= 0 ? scaleNotes[(rootIndex + 4) % scaleNotes.length] : rootPitchClass;
-    const bassTargets = chooseBassPattern(rootPitchClass, fifthPitchClass, chord.bar, profile);
-
-    return bassTargets.map((target, index) => ({
-      note: `${target.note}${target.octave}`,
-      time: chord.time + target.timeOffset,
-      duration: target.duration,
-      velocity: index === 0 ? profile.bassVelocity + 0.04 : profile.bassVelocity - 0.04,
-    }));
+    return pickRandom([...pool]);
   });
 }
 
-function chooseBassPattern(
-  root: string,
-  fifth: string,
-  bar: number,
+function varyMelodyContour(baseContour: number[], noteCount: number, settings: LoopSettings): number[] {
+  const pool = MELODY_CONTOUR_POOLS[settings.sequence.style];
+  const changeChance = VARIATION_CHANGE_CHANCE[settings.sequence.variation];
+
+  return Array.from({ length: noteCount }, (_, index) => {
+    const baseValue = baseContour[index % baseContour.length] ?? 0;
+
+    if (index === 0) {
+      return 0;
+    }
+
+    if (Math.random() < changeChance) {
+      return pickRandom([...pool]);
+    }
+
+    return baseValue;
+  });
+}
+
+function chooseMelodyNote(
+  chord: ChordEvent,
+  scaleNotes: string[],
+  previousPitchClass: string | null,
+  contourMotion: number,
+  noteIndex: number,
+  isStrongAccent: boolean,
+  settings: LoopSettings,
   profile: MoodProfile,
-): BassTarget[] {
-  switch (profile.bassPattern) {
-    case "simple":
-      return [
-        { note: root, octave: 2, duration: 4, timeOffset: 0 },
-      ];
-    case "lifted":
-      return [
-        { note: root, octave: 2, duration: 2, timeOffset: 0 },
-        { note: root, octave: 3, duration: 2, timeOffset: 2 },
-      ];
-    case "driving":
-      return [
-        { note: root, octave: 2, duration: 1, timeOffset: 0 },
-        { note: fifth, octave: 2, duration: 1, timeOffset: 1 },
-        { note: root, octave: 3, duration: 1, timeOffset: 2 },
-        { note: fifth, octave: 2, duration: 1, timeOffset: 3 },
-      ];
-    case "steady":
-    default:
-      return [
-        { note: root, octave: 2, duration: 2, timeOffset: 0 },
-        { note: bar % 2 === 0 ? fifth : root, octave: 2, duration: 2, timeOffset: 2 },
-      ];
+): string {
+  const chordTones = chord.notes.map((note) => Note.pitchClass(note));
+
+  if (settings.sequence.style === "arp-like") {
+    const arpTone = chordTones[noteIndex % chordTones.length] ?? chordTones[0] ?? scaleNotes[0];
+    const resolvedArpTone = isStrongAccent ? arpTone : keepScaleTone(arpTone, scaleNotes);
+    return `${resolvedArpTone}${chooseMelodyOctave(noteIndex, chord.bar, settings, profile)}`;
   }
+
+  const previousIndex = previousPitchClass ? scaleNotes.indexOf(previousPitchClass) : -1;
+  const seedIndex = previousIndex >= 0 ? previousIndex : scaleNotes.indexOf(chordTones[0] ?? scaleNotes[0]);
+  const nextPitchClass = scaleNotes[wrapScaleIndex(seedIndex + contourMotion, scaleNotes.length)] ?? scaleNotes[0];
+  const resolvedPitchClass = isStrongAccent
+    ? resolveChordToneTarget(nextPitchClass, chordTones, scaleNotes)
+    : keepScaleTone(nextPitchClass, scaleNotes);
+
+  return `${resolvedPitchClass}${chooseMelodyOctave(noteIndex, chord.bar, settings, profile)}`;
+}
+
+function chooseMelodyOctave(
+  noteIndex: number,
+  barIndex: number,
+  settings: LoopSettings,
+  profile: MoodProfile,
+): number {
+  if (settings.sequence.style === "arp-like") {
+    return noteIndex % 3 === 2 ? 5 : 4;
+  }
+
+  return profile.melodyOctaves[(noteIndex + barIndex) % profile.melodyOctaves.length];
+}
+
+function chooseMelodyVelocity(
+  beat: number,
+  noteIndex: number,
+  settings: LoopSettings,
+  profile: MoodProfile,
+): number {
+  const accent = beat === 0 || beat === 2 ? 0.05 : -0.03;
+  const styleBoost = settings.sequence.style === "syncopated" && beat % 1 !== 0 ? 0.03 : 0;
+  const motifBoost = noteIndex % 4 === 0 ? 0.02 : 0;
+  return clampVelocity(profile.melodyVelocity + accent + styleBoost + motifBoost);
+}
+
+function chooseBassTarget(
+  chord: ChordEvent,
+  nextChord: ChordEvent,
+  scaleNotes: string[],
+  noteIndex: number,
+  windowCount: number,
+  beat: number,
+  settings: LoopSettings,
+): BassTarget {
+  const root = Note.pitchClass(chord.root);
+  const nextRoot = Note.pitchClass(nextChord.root);
+  const rootIndex = scaleNotes.indexOf(root);
+  const chordTones = chord.notes.map((note) => Note.pitchClass(note));
+  const fifth = rootIndex >= 0 ? scaleNotes[(rootIndex + 4) % scaleNotes.length] : root;
+  const octaveRoot: BassTarget = { note: root, octave: 3 };
+  const lowRoot: BassTarget = { note: root, octave: 2 };
+  const fifthTarget: BassTarget = { note: fifth, octave: 2 };
+  const passingTarget: BassTarget = { note: choosePassingNote(root, nextRoot, scaleNotes), octave: 2 };
+  const thirdTarget: BassTarget = { note: chordTones[1] ?? root, octave: 2 };
+  const isStrongAccent = beat === 0 || beat === 2;
+  const isLastWindow = noteIndex === windowCount - 1;
+
+  if (noteIndex === 0) {
+    return lowRoot;
+  }
+
+  switch (settings.sequence.style) {
+    case "arp-like":
+      return [lowRoot, thirdTarget, fifthTarget, octaveRoot][noteIndex % 4] ?? lowRoot;
+    case "syncopated":
+      if (isLastWindow && root !== nextRoot && Math.random() < 0.55) {
+        return passingTarget;
+      }
+
+      return isStrongAccent ? lowRoot : pickRandom([lowRoot, fifthTarget, passingTarget]);
+    case "flowing":
+      if (isStrongAccent && Math.random() < 0.7) {
+        return lowRoot;
+      }
+
+      return pickRandom([lowRoot, fifthTarget, octaveRoot]);
+    case "straight":
+    default:
+      if (isStrongAccent) {
+        return Math.random() < 0.75 ? lowRoot : fifthTarget;
+      }
+
+      if (isLastWindow && root !== nextRoot && Math.random() < 0.35) {
+        return passingTarget;
+      }
+
+      return pickRandom([lowRoot, fifthTarget, octaveRoot]);
+  }
+}
+
+function chooseBassVelocity(
+  beat: number,
+  noteIndex: number,
+  profile: MoodProfile,
+  settings: LoopSettings,
+): number {
+  const accent = beat === 0 || beat === 2 ? 0.05 : -0.04;
+  const styleBoost = settings.sequence.style === "arp-like" && noteIndex % 2 === 1 ? 0.02 : 0;
+  return clampVelocity(profile.bassVelocity + accent + styleBoost);
+}
+
+function choosePassingNote(currentRoot: string, nextRoot: string, scaleNotes: string[]): string {
+  const currentIndex = scaleNotes.indexOf(currentRoot);
+  const nextIndex = scaleNotes.indexOf(nextRoot);
+
+  if (currentIndex === -1 || nextIndex === -1 || currentRoot === nextRoot) {
+    return currentRoot;
+  }
+
+  const upwardDistance = (nextIndex - currentIndex + scaleNotes.length) % scaleNotes.length;
+  const downwardDistance = (currentIndex - nextIndex + scaleNotes.length) % scaleNotes.length;
+  const direction = upwardDistance <= downwardDistance ? 1 : -1;
+
+  return scaleNotes[wrapScaleIndex(currentIndex + direction, scaleNotes.length)] ?? currentRoot;
+}
+
+function resolveChordToneTarget(candidate: string, chordTones: string[], scaleNotes: string[]): string {
+  if (chordTones.includes(candidate)) {
+    return candidate;
+  }
+
+  const candidateIndex = scaleNotes.indexOf(candidate);
+
+  if (candidateIndex === -1) {
+    return chordTones[0] ?? candidate;
+  }
+
+  const orderedTargets = [...chordTones].sort((left, right) => {
+    const leftIndex = scaleNotes.indexOf(left);
+    const rightIndex = scaleNotes.indexOf(right);
+    return Math.abs(leftIndex - candidateIndex) - Math.abs(rightIndex - candidateIndex);
+  });
+
+  return orderedTargets[0] ?? candidate;
+}
+
+function keepScaleTone(candidate: string, scaleNotes: string[]): string {
+  return scaleNotes.includes(candidate) ? candidate : scaleNotes[0];
+}
+
+function wrapScaleIndex(index: number, size: number): number {
+  return ((index % size) + size) % size;
+}
+
+function clampVelocity(value: number): number {
+  return Math.min(0.95, Math.max(0.35, value));
 }
 
 function pickRandom<T>(items: T[]): T {

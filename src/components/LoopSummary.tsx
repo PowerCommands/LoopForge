@@ -31,6 +31,10 @@ export function LoopSummary({ loop }: LoopSummaryProps) {
             : "No chords enabled"}
         </li>
         <li>Length: {loop.settings.length} bars</li>
+        <li>
+          Sequence: {loop.settings.sequence.patternLength} steps, {loop.settings.sequence.density} density,{" "}
+          {loop.settings.sequence.variation} variation, {loop.settings.sequence.style}
+        </li>
       </ul>
     </section>
   );

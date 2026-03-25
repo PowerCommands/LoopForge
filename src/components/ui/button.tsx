@@ -10,6 +10,7 @@ const buttonVariants = cva(
         default: "bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-hover))]",
         secondary: "bg-secondary text-secondary-foreground hover:bg-[hsl(var(--secondary-hover))]",
         outline: "border border-border bg-transparent text-foreground hover:bg-muted",
+        destructive: "bg-destructive text-destructive-foreground hover:brightness-110",
       },
       size: {
         default: "h-10 px-4 py-2",

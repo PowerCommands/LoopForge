@@ -21,6 +21,16 @@ function formatSavedAt(value: string): string {
   }).format(date);
 }
 
+function normalizeUrl(value: string): string {
+  const trimmed = value.trim();
+
+  if (trimmed.length === 0) {
+    return "";
+  }
+
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
 export function ArrangementLibraryView({ arrangements, onDownloadMidi }: ArrangementLibraryViewProps) {
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
 
@@ -56,6 +66,7 @@ export function ArrangementLibraryView({ arrangements, onDownloadMidi }: Arrange
                 <tr className="text-muted-foreground">
                   <th className="w-12 px-4 py-3"> </th>
                   <th className="px-4 py-3 font-semibold">Name</th>
+                  <th className="px-4 py-3 font-semibold">URL</th>
                   <th className="px-4 py-3 font-semibold">Tempo</th>
                   <th className="px-4 py-3 font-semibold">Saved</th>
                   <th className="px-4 py-3 font-semibold text-right">Action</th>
@@ -79,6 +90,20 @@ export function ArrangementLibraryView({ arrangements, onDownloadMidi }: Arrange
                           </button>
                         </td>
                         <td className="px-4 py-3 align-top font-medium text-foreground">{arrangement.name}</td>
+                        <td className="px-4 py-3 align-top text-muted-foreground">
+                          {arrangement.url.trim().length > 0 ? (
+                            <a
+                              href={normalizeUrl(arrangement.url)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="break-all underline underline-offset-4"
+                            >
+                              {arrangement.url}
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                         <td className="px-4 py-3 align-top text-muted-foreground">{arrangement.tempo} BPM</td>
                         <td className="px-4 py-3 align-top text-muted-foreground">{formatSavedAt(arrangement.createdAt)}</td>
                         <td className="px-4 py-3 text-right align-top">
@@ -89,7 +114,7 @@ export function ArrangementLibraryView({ arrangements, onDownloadMidi }: Arrange
                       </tr>
                       {isExpanded ? (
                         <tr className="border-t border-border bg-white/35 dark:bg-white/5">
-                          <td colSpan={5} className="px-4 py-4">
+                          <td colSpan={6} className="px-4 py-4">
                             <div className="space-y-3">
                               {arrangement.loops.map((loop, index) => (
                                 <div key={loop.id} className="rounded-md border border-border bg-white/55 px-4 py-3 dark:bg-[#17152d]">

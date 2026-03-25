@@ -1,0 +1,11 @@
+﻿@using BudgetAdvisor.App.Layout
+
+<MainLayout Body="@PageBody" />
+
+@code {
+    private static RenderFragment PageBody => builder =>
+    {
+        builder.OpenComponent<AppPageHost>(0);
+        builder.CloseComponent();
+    };
+}

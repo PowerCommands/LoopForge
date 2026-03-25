@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Loop Forge Dropbox Callback</title>
+  </head>
+  <body>
+    <script>
+      (function () {
+        const params = new URLSearchParams(window.location.search);
+        const state = params.get("state") || "";
+        const code = params.get("code") || "";
+        const error = params.get("error_description") || params.get("error") || "";
+        const targetOrigin = getTargetOriginFromState(state);
+
+        if (targetOrigin && targetOrigin !== window.location.origin) {
+          const redirectUrl = new URL(window.location.pathname, targetOrigin);
+          if (code) {
+            redirectUrl.searchParams.set("code", code);
+          }
+          if (state) {
+            redirectUrl.searchParams.set("state", state);
+          }
+          if (error) {
+            redirectUrl.searchParams.set("error", error);
+          }
+
+          window.location.replace(redirectUrl.toString());
+          return;
+        }
+
+        const payload = {
+          type: "loopForge.dropbox.auth",
+          state,
+          code,
+          error,
+        };
+
+        if (state) {
+          window.localStorage.setItem(`loopForge.dropbox.auth.response.${state}`, JSON.stringify(payload));
+        }
+
+        if (window.opener) {
+          window.opener.postMessage(payload, window.location.origin);
+        }
+
+        window.setTimeout(function () {
+          window.close();
+        }, 150);
+
+        function getTargetOriginFromState(currentState) {
+          if (!currentState) {
+            return "";
+          }
+
+          const separatorIndex = currentState.indexOf(".");
+          if (separatorIndex <= 0 || separatorIndex >= currentState.length - 1) {
+            return "";
+          }
+
+          const encodedOrigin = currentState.slice(separatorIndex + 1);
+
+          try {
+            const base64 = encodedOrigin.replace(/-/g, "+").replace(/_/g, "/");
+            const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+            return window.atob(padded);
+          } catch {
+            return "";
+          }
+        }
+      })();
+    </script>
+  </body>
+</html>

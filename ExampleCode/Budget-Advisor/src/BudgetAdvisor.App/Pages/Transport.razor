@@ -1,0 +1,1531 @@
+@page "/transport"
+@using System.ComponentModel.DataAnnotations
+@implements IDisposable
+@inject ApplicationState AppState
+@inject IDialogService DialogService
+@inject LocalizationService Localizer
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="status-banner">@statusMessage</div>
+}
+
+<MudTabs Class="section-tabs" Rounded="true" SliderColor="Color.Primary" Elevation="0">
+    <MudTabPanel Text="@Localizer["transport.costsTab"]" Icon="@Icons.Material.Filled.ReceiptLong">
+        <ExpenseRecordsTable Scope="ExpenseQueryScope.Transport"
+                             ShowTitle="false"
+                             DefaultToCurrentMonth="true"
+                             ShowAllCostsToggle="true"
+                             ShowCategoryFilter="false"
+                             UseScopedDateRangeForShowAllCosts="true"
+                             IncludeAllCosts="@showAllTransportCosts"
+                             IncludeAllCostsChanged="HandleShowAllTransportCostsChanged"
+                             OnDelete="HandleDeleteExpenseAsync" />
+    </MudTabPanel>
+
+    <MudTabPanel Text="@Localizer["transport.oneTimeCost"]" Icon="@Icons.Material.Filled.AddCard">
+        <section class="card-panel">
+            <h2>@Localizer["transport.oneTimeCost"]</h2>
+            <EditForm EditContext="costEditContext" OnValidSubmit="HandleAddCostAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <div class="form-grid">
+                    <div>
+                        <label class="form-label">@Localizer["transport.vehicle"]</label>
+                        <InputSelect class="form-select" @bind-Value="costForm.VehicleId">
+                            <option value="">@Localizer["transport.selectVehicle"]</option>
+                            @foreach (var vehicle in TransportVehicles)
+                            {
+                                <option value="@vehicle.Id">@vehicle.Name</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => costForm.VehicleId" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.description"]</label>
+                        <InputText class="form-control" @bind-Value="costForm.Description" />
+                        <ValidationMessage For="() => costForm.Description" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.subcategory"]</label>
+                        <InputText class="form-control" @bind-Value="costForm.Subcategory" list="transport-cost-subcategories" />
+                        <datalist id="transport-cost-subcategories">
+                            @foreach (var subcategory in GetSubcategorySuggestions())
+                            {
+                                <option value="@subcategory"></option>
+                            }
+                        </datalist>
+                        <ValidationMessage For="() => costForm.Subcategory" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.amount"]</label>
+                        <InputNumber class="form-control" @bind-Value="costForm.Amount" />
+                        <ValidationMessage For="() => costForm.Amount" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.date"]</label>
+                        <InputDate class="form-control" @bind-Value="costForm.Date" />
+                        <ValidationMessage For="() => costForm.Date" />
+                    </div>
+                </div>
+                <button class="btn btn-primary" type="submit">@Localizer["action.addTransportCost"]</button>
+            </EditForm>
+        </section>
+    </MudTabPanel>
+
+    <MudTabPanel Text="@Localizer["transport.recurringCostsTab"]" Icon="@Icons.Material.Filled.Autorenew">
+        <section class="card-panel">
+            <h2>@Localizer["transport.series"]</h2>
+            <EditForm EditContext="definitionEditContext" OnValidSubmit="HandleAddDefinitionAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <div class="form-grid">
+                    <div>
+                        <label class="form-label">@Localizer["transport.vehicle"]</label>
+                        <InputSelect class="form-select" @bind-Value="definitionForm.VehicleId">
+                            <option value="">@Localizer["transport.selectVehicle"]</option>
+                            @foreach (var vehicle in TransportVehicles)
+                            {
+                                <option value="@vehicle.Id">@vehicle.Name</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => definitionForm.VehicleId" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.description"]</label>
+                        <InputText class="form-control" @bind-Value="definitionForm.Description" />
+                        <ValidationMessage For="() => definitionForm.Description" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.subcategory"]</label>
+                        <InputText class="form-control" @bind-Value="definitionForm.Subcategory" list="transport-definition-subcategories" />
+                        <datalist id="transport-definition-subcategories">
+                            @foreach (var subcategory in GetSubcategorySuggestions())
+                            {
+                                <option value="@subcategory"></option>
+                            }
+                        </datalist>
+                        <ValidationMessage For="() => definitionForm.Subcategory" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.amount"]</label>
+                        <InputNumber class="form-control" @bind-Value="definitionForm.Amount" />
+                        <ValidationMessage For="() => definitionForm.Amount" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.intervalMonths"]</label>
+                        <InputNumber class="form-control" @bind-Value="definitionForm.IntervalMonths" />
+                        <ValidationMessage For="() => definitionForm.IntervalMonths" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.start"]</label>
+                        <InputDate class="form-control" @bind-Value="definitionForm.StartDate" />
+                        <ValidationMessage For="() => definitionForm.StartDate" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.end"]</label>
+                        <InputDate class="form-control" @bind-Value="definitionForm.EndDate" />
+                        <ValidationMessage For="() => definitionForm.EndDate" />
+                    </div>
+                </div>
+                <button class="btn btn-primary" type="submit">@Localizer["action.addTransportDefinition"]</button>
+            </EditForm>
+        </section>
+
+        <section class="card-panel mt-4">
+            <h2>@Localizer["transport.definitions"]</h2>
+            <div class="table-responsive">
+                <table class="table app-table">
+                    <thead>
+                        <tr>
+                            <th>@Localizer["field.subcategory"]</th>
+                            <th>@Localizer["field.amount"]</th>
+                            <th>@Localizer["field.interval"]</th>
+                            <th>@Localizer["field.start"]</th>
+                            <th>@Localizer["field.end"]</th>
+                            <th>
+                                <div class="table-actions-header">
+                                    <span>@Localizer["field.actions"]</span>
+                                    <button class="btn btn-outline-secondary btn-sm"
+                                            @onclick="HandleArchiveExpiredDefinitionsAsync"
+                                            title="@Localizer["action.archiveAll"]"
+                                            aria-label="@Localizer["action.archiveAll"]"
+                                            disabled="@(!HasExpiredDefinitions())">🗄️</button>
+                                </div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var definition in TransportDefinitions)
+                        {
+                            <tr>
+                                <td>@GetDefinitionDisplay(definition)</td>
+                                <td>@AppState.FormatCurrency(definition.Amount)</td>
+                                <td>@GetIntervalLabel(definition.IntervalMonths)</td>
+                                <td>@GetMonthYearLabel(definition.StartYear, definition.StartMonth)</td>
+                                <td>@GetMonthYearLabel(definition.EndYear, definition.EndMonth)</td>
+                                <td>
+                                    <div class="button-row">
+                                        <button class="btn btn-outline-secondary btn-sm"
+                                                @onclick="() => HandleRenewDefinition(definition)"
+                                                title="@Localizer["action.renew"]"
+                                                aria-label="@Localizer["action.renew"]">♻️</button>
+                                        <button class="btn btn-outline-secondary btn-sm"
+                                                @onclick="() => HandleArchiveDefinitionAsync(definition)"
+                                                title="@Localizer["action.archive"]"
+                                                aria-label="@Localizer["action.archive"]">🗄️</button>
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                       Color="Color.Error"
+                                                       Size="Size.Small"
+                                                       OnClick="@(() => HandleDeleteDefinitionAsync(definition))" />
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </MudTabPanel>
+
+    <MudTabPanel Text="@Localizer["transport.loansTab"]" Icon="@Icons.Material.Filled.AccountBalance">
+        <section class="card-panel">
+            <h2>@Localizer["transport.createLoan"]</h2>
+            <EditForm EditContext="loanEditContext" OnValidSubmit="HandleAddLoanAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                    <div class="form-grid">
+                    <div>
+                        <label class="form-label">@Localizer["transport.vehicle"]</label>
+                        <InputSelect class="form-select" @bind-Value="loanForm.VehicleId">
+                            <option value="">@Localizer["transport.selectVehicle"]</option>
+                            @foreach (var vehicle in TransportVehicles)
+                            {
+                                <option value="@vehicle.Id">@vehicle.Name</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => loanForm.VehicleId" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["transport.lender"]</label>
+                        <InputText class="form-control" @bind-Value="loanForm.Lender" />
+                        <ValidationMessage For="() => loanForm.Lender" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["transport.loanStartDate"]</label>
+                        <InputDate class="form-control" @bind-Value="loanForm.LoanStartDate" />
+                        <ValidationMessage For="() => loanForm.LoanStartDate" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["transport.initialLoanAmount"]</label>
+                        <InputNumber class="form-control" @bind-Value="loanForm.InitialLoanAmount" />
+                        <ValidationMessage For="() => loanForm.InitialLoanAmount" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["transport.remainingDebt"]</label>
+                        <InputNumber class="form-control" @bind-Value="loanForm.RemainingDebt" />
+                        <ValidationMessage For="() => loanForm.RemainingDebt" />
+                    </div>
+                </div>
+                <button class="btn btn-primary" type="submit">@Localizer["action.addLoan"]</button>
+            </EditForm>
+        </section>
+
+        @if (!TransportLoans.Any())
+        {
+            <section class="card-panel mt-4">
+                <p class="empty-state mb-0">@Localizer["transport.noLoans"]</p>
+            </section>
+        }
+        else
+        {
+            <section class="card-panel mt-4">
+                <div class="stats-grid">
+                    <div class="stat-card"><span>@Localizer["transport.currentAmortization"]</span><strong>@AppState.FormatCurrency(TotalTransportLoanAmortization)</strong></div>
+                    <div class="stat-card"><span>@Localizer["transport.remainingDebt"]</span><strong>@AppState.FormatCurrency(TotalTransportLoanRemainingDebt)</strong></div>
+                </div>
+            </section>
+
+            <section class="card-panel mt-4">
+                <div class="table-responsive">
+                    <table class="table app-table compact-overview-table">
+                        <thead>
+                            <tr>
+                                <th class="expander-column"></th>
+                                <th>@Localizer["transport.vehicle"]</th>
+                                <th>@Localizer["transport.lender"]</th>
+                                <th>@Localizer["loans.bindingPeriod"]</th>
+                                <th>@Localizer["field.status"]</th>
+                                <th>@Localizer["table.interest"]</th>
+                                <th>@Localizer["transport.currentAmortization"]</th>
+                                <th>@Localizer["transport.remainingDebt"]</th>
+                                <th>@Localizer["field.actions"]</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var loan in TransportLoans)
+                            {
+                                <tr>
+                                    <td class="expander-column">
+                                        <MudIconButton Icon="@(IsLoanExpanded(loan.Id) ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ChevronRight)"
+                                                       Size="Size.Small"
+                                                       Color="Color.Primary"
+                                                       OnClick="@(() => ToggleLoanDetails(loan.Id))" />
+                                    </td>
+                                    <td>@GetVehicleName(loan.VehicleId)</td>
+                                    <td>@loan.Lender</td>
+                                    <td>@GetActiveBindingPeriodDisplay(loan.Id)</td>
+                                    <td>@(HasActiveBindingPeriod(loan.Id) ? "✔️" : "✖️")</td>
+                                    <td>@GetActiveBindingRateDisplay(loan.Id)</td>
+                                    <td>@GetActiveAmortizationDisplay(loan.Id)</td>
+                                    <td>@AppState.FormatCurrency(AppState.GetLoanCurrentBalance(loan.Id))</td>
+                                    <td>
+                                        <div class="button-row">
+                                            <button class="btn btn-outline-secondary btn-sm" @onclick="() => HandleBackfillLoanAmortizationAsync(loan.Id)">@Localizer["loans.backfillAmortization"]</button>
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                           Color="Color.Error"
+                                                           Size="Size.Small"
+                                                           OnClick="@(() => HandleDeleteLoanAsync(loan))" />
+                                        </div>
+                                    </td>
+                                </tr>
+                                @if (IsLoanExpanded(loan.Id))
+                                {
+                                    <tr class="row-detail">
+                                        <td colspan="9">
+                                            <div class="inline-detail-shell">
+                                                <div class="stack-grid two-up mt-4">
+                                                    <section class="card-panel">
+                                                        <div class="section-title-row">
+                                                            <h3>@Localizer["transport.interestBindingPeriods"]</h3>
+                                                            <label class="form-check-label d-flex align-items-center gap-2">
+                                                                <InputCheckbox class="form-check-input mt-0" @bind-Value="showAllTransportBindingPeriods" />
+                                                                <span>@Localizer["filter.showAll"]</span>
+                                                            </label>
+                                                        </div>
+                                                        <EditForm EditContext="GetBindingPeriodEditContext(loan.Id)" OnValidSubmit="@(() => HandleAddBindingPeriodAsync(loan.Id))">
+                                                            <DataAnnotationsValidator />
+                                                            <ValidationSummary />
+                                                            <div class="form-grid">
+                                                                <div>
+                                                                    <label class="form-label">@Localizer["field.start"]</label>
+                                                                    <InputDate class="form-control" @bind-Value="GetBindingPeriodForm(loan.Id).StartDate" />
+                                                                    <ValidationMessage For="@(() => GetBindingPeriodForm(loan.Id).StartDate)" />
+                                                                </div>
+                                                                <div>
+                                                                    <label class="form-label">@Localizer["field.end"]</label>
+                                                                    <InputDate class="form-control" @bind-Value="GetBindingPeriodForm(loan.Id).EndDate" />
+                                                                    <ValidationMessage For="@(() => GetBindingPeriodForm(loan.Id).EndDate)" />
+                                                                </div>
+                                                                <div>
+                                                                    <label class="form-label">@Localizer["transport.interestRate"]</label>
+                                                                    <InputNumber class="form-control" @bind-Value="GetBindingPeriodForm(loan.Id).InterestRate" />
+                                                                    <ValidationMessage For="@(() => GetBindingPeriodForm(loan.Id).InterestRate)" />
+                                                                </div>
+                                                                <div>
+                                                                    <label class="form-label">@Localizer["transport.monthlyAmortizationAmount"]</label>
+                                                                    <InputNumber class="form-control" @bind-Value="GetBindingPeriodForm(loan.Id).MonthlyAmortization" />
+                                                                    <ValidationMessage For="@(() => GetBindingPeriodForm(loan.Id).MonthlyAmortization)" />
+                                                                </div>
+                                                            </div>
+                                                            <button class="btn btn-primary" type="submit">@Localizer["transport.createBindingPeriod"]</button>
+                                                        </EditForm>
+
+                                                        <div class="table-responsive mt-4">
+                                                            <table class="table app-table">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th>@Localizer["field.start"]</th>
+                                                                        <th>@Localizer["field.end"]</th>
+                                                                        <th>@Localizer["transport.interestRate"]</th>
+                                                                        <th>@Localizer["transport.monthlyAmortizationAmount"]</th>
+                                                                        <th>@Localizer["field.actions"]</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    @if (!GetVisibleLoanInterestBindingPeriods(loan.Id).Any())
+                                                                    {
+                                                                        <tr>
+                                                                            <td colspan="5" class="empty-state">@Localizer["transport.noBindingPeriods"]</td>
+                                                                        </tr>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        @foreach (var period in GetVisibleLoanInterestBindingPeriods(loan.Id))
+                                                                        {
+                                                                            <tr>
+                                                                                <td>@FormatDate(period.StartMonth)</td>
+                                                                                <td>@FormatDate(period.EndMonth)</td>
+                                                                                <td>@FormatInterestRate(period.InterestRate)</td>
+                                                                                <td>@AppState.FormatCurrency(period.MonthlyAmortization)</td>
+                                                                                <td>
+                                                                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                                                                   Color="Color.Error"
+                                                                                                   Size="Size.Small"
+                                                                                                   OnClick="@(() => HandleDeleteBindingPeriodAsync(period))" />
+                                                                                </td>
+                                                                            </tr>
+                                                                        }
+                                                                    }
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </section>
+
+                                                    <section class="card-panel">
+                                                        <details>
+                                                            <summary class="btn btn-outline-primary btn-sm">@Localizer["table.balance"]</summary>
+                                                            <div class="table-responsive mt-3">
+                                                                <table class="table app-table">
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th>@Localizer["credits.month"]</th>
+                                                                            <th>@Localizer["table.balance"]</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        @if (!GetBalanceEntries(loan.Id).Any())
+                                                                        {
+                                                                            <tr>
+                                                                                <td colspan="2" class="empty-state">@Localizer["table.noCostRows"]</td>
+                                                                            </tr>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            @foreach (var balance in GetBalanceEntries(loan.Id))
+                                                                            {
+                                                                                <tr>
+                                                                                    <td>@($"{balance.Year:0000}/{balance.Month:00}")</td>
+                                                                                    <td>@AppState.FormatCurrency(balance.Balance)</td>
+                                                                                </tr>
+                                                                            }
+                                                                        }
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </details>
+                                                    </section>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="@Localizer["transport.leasingTab"]" Icon="@Icons.Material.Filled.Description">
+        <section class="card-panel">
+            <h2>@Localizer["transport.createLeasingContract"]</h2>
+            <EditForm EditContext="leasingEditContext" OnValidSubmit="HandleAddLeasingContractAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <div class="form-grid">
+                    <div>
+                        <label class="form-label">@Localizer["transport.vehicle"]</label>
+                        <InputSelect class="form-select" @bind-Value="leasingForm.VehicleId">
+                            <option value="">@Localizer["transport.selectVehicle"]</option>
+                            @foreach (var vehicle in TransportVehicles)
+                            {
+                                <option value="@vehicle.Id">@vehicle.Name</option>
+                            }
+                        </InputSelect>
+                        <ValidationMessage For="() => leasingForm.VehicleId" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.start"]</label>
+                        <InputDate class="form-control" @bind-Value="leasingForm.StartDate" />
+                        <ValidationMessage For="() => leasingForm.StartDate" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["field.end"]</label>
+                        <InputDate class="form-control" @bind-Value="leasingForm.EndDate" />
+                        <ValidationMessage For="() => leasingForm.EndDate" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["transport.monthlyCost"]</label>
+                        <InputNumber class="form-control" @bind-Value="leasingForm.MonthlyCost" />
+                        <ValidationMessage For="() => leasingForm.MonthlyCost" />
+                    </div>
+                </div>
+                <button class="btn btn-primary" type="submit">@Localizer["transport.createLeasingContract"]</button>
+            </EditForm>
+        </section>
+
+        <section class="card-panel mt-4">
+            <h2>@Localizer["transport.leasingContracts"]</h2>
+            <div class="table-responsive">
+                <table class="table app-table">
+                    <thead>
+                        <tr>
+                            <th>@Localizer["transport.vehicle"]</th>
+                            <th>@Localizer["field.start"]</th>
+                            <th>@Localizer["field.end"]</th>
+                            <th>@Localizer["transport.monthlyCost"]</th>
+                            <th>@Localizer["field.actions"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!TransportLeasingContracts.Any())
+                        {
+                            <tr>
+                                <td colspan="5" class="empty-state">@Localizer["transport.noLeasingContracts"]</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var contract in TransportLeasingContracts)
+                            {
+                                <tr>
+                                    <td>@GetVehicleName(contract.VehicleId)</td>
+                                    <td>@FormatDate(contract.StartDate)</td>
+                                    <td>@FormatDate(contract.EndDate)</td>
+                                    <td>@AppState.FormatCurrency(contract.MonthlyCost)</td>
+                                    <td>
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                       Color="Color.Error"
+                                                       Size="Size.Small"
+                                                       OnClick="@(() => HandleDeleteLeasingContractAsync(contract))" />
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </MudTabPanel>
+
+    <MudTabPanel Text="@Localizer["transport.vehiclesTab"]" Icon="@Icons.Material.Filled.TimeToLeave">
+        <section class="card-panel">
+            <h2>@Localizer["transport.addVehicle"]</h2>
+            <EditForm EditContext="vehicleEditContext" OnValidSubmit="HandleAddVehicleAsync">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+                <div class="form-grid">
+                    <div>
+                        <label class="form-label">@Localizer["field.name"]</label>
+                        <InputText class="form-control" @bind-Value="vehicleForm.Name" />
+                        <ValidationMessage For="() => vehicleForm.Name" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["transport.modelYear"]</label>
+                        <InputNumber class="form-control" @bind-Value="vehicleForm.ModelYear" />
+                        <ValidationMessage For="() => vehicleForm.ModelYear" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["transport.mileage"]</label>
+                        <InputNumber class="form-control" @bind-Value="vehicleForm.Mileage" />
+                        <ValidationMessage For="() => vehicleForm.Mileage" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["transport.fuelType"]</label>
+                        <InputSelect class="form-select" @bind-Value="vehicleForm.FuelType">
+                            @foreach (var option in FuelTypeOptions)
+                            {
+                                <option value="@option.Value">@Localizer[option.LabelKey]</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["transport.vehicleType"]</label>
+                        <InputSelect class="form-select" @bind-Value="vehicleForm.VehicleType">
+                            @foreach (var option in VehicleTypeOptions)
+                            {
+                                <option value="@option.Value">@Localizer[option.LabelKey]</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["transport.ownershipType"]</label>
+                        <InputSelect class="form-select" @bind-Value="vehicleForm.OwnershipType">
+                            @foreach (var option in OwnershipTypeOptions)
+                            {
+                                <option value="@option.Value">@Localizer[option.LabelKey]</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    @if (vehicleForm.OwnershipType == VehicleOwnershipType.Private)
+                    {
+                        <div>
+                            <label class="form-label">@Localizer["transport.purchasePrice"]</label>
+                            <InputNumber class="form-control" @bind-Value="vehicleForm.PurchasePrice" />
+                            <ValidationMessage For="() => vehicleForm.PurchasePrice" />
+                        </div>
+                        <div>
+                            <label class="form-label">@Localizer["transport.estimatedSaleValue"]</label>
+                            <InputNumber class="form-control" @bind-Value="vehicleForm.EstimatedSaleValue" />
+                            <ValidationMessage For="() => vehicleForm.EstimatedSaleValue" />
+                        </div>
+                    }
+                </div>
+                <button class="btn btn-primary" type="submit">@Localizer["transport.addVehicle"]</button>
+            </EditForm>
+        </section>
+
+        <section class="card-panel mt-4">
+            <h2>@Localizer["transport.vehiclesTab"]</h2>
+            <div class="table-responsive">
+                <table class="table app-table">
+                    <thead>
+                        <tr>
+                            <th>@Localizer["field.name"]</th>
+                            <th>@Localizer["transport.modelYear"]</th>
+                            <th>@Localizer["transport.mileage"]</th>
+                            <th>@Localizer["transport.fuelType"]</th>
+                            <th>@Localizer["transport.vehicleType"]</th>
+                            <th>@Localizer["transport.ownershipType"]</th>
+                            <th>@GetVehicleExpensesHeader()</th>
+                            <th>@Localizer["field.actions"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!TransportVehicles.Any())
+                        {
+                            <tr>
+                                <td colspan="8" class="empty-state">@Localizer["transport.noVehicles"]</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var vehicle in TransportVehicles)
+                            {
+                                <tr>
+                                    <td class="vehicle-edit-cell" @ondblclick="() => BeginEditVehicleName(vehicle)">
+                                        @if (editingVehicleId == vehicle.Id)
+                                        {
+                                            <input @ref="editingVehicleInput"
+                                                   class="form-control form-control-sm vehicle-edit-input"
+                                                   value="@editingVehicleName"
+                                                   @oninput="HandleVehicleNameInput"
+                                                   @onkeydown="HandleVehicleNameKeyDownAsync"
+                                                   @onblur="HandleVehicleNameBlurAsync" />
+                                        }
+                                        else
+                                        {
+                                            <span>@vehicle.Name</span>
+                                        }
+                                    </td>
+                                    <td>@vehicle.ModelYear</td>
+                                    <td>@vehicle.Mileage</td>
+                                    <td>@Localizer[$"transport.fuelType.{vehicle.FuelType}"]</td>
+                                    <td>@Localizer[$"transport.vehicleType.{vehicle.VehicleType}"]</td>
+                                    <td>@Localizer[$"transport.ownershipType.{vehicle.OwnershipType}"]</td>
+                                    <td>@AppState.FormatCurrency(GetVehicleExpensesForLatestClosedMonth(vehicle.Id))</td>
+                                    <td>
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                       Color="Color.Error"
+                                                       Size="Size.Small"
+                                                       OnClick="@(() => HandleDeleteVehicleAsync(vehicle))" />
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </MudTabPanel>
+
+</MudTabs>
+
+@code {
+    private TransportVehicleFormModel vehicleForm = new();
+    private TransportCostFormModel costForm = new();
+    private TransportDefinitionFormModel definitionForm = new();
+    private TransportLoanFormModel loanForm = new();
+    private TransportLeasingFormModel leasingForm = new();
+    private readonly Dictionary<Guid, LoanBindingPeriodFormModel> bindingPeriodForms = [];
+    private readonly Dictionary<Guid, EditContext> bindingPeriodEditContexts = [];
+    private EditContext costEditContext = default!;
+    private EditContext definitionEditContext = default!;
+    private EditContext loanEditContext = default!;
+    private EditContext leasingEditContext = default!;
+    private EditContext vehicleEditContext = default!;
+    private readonly HashSet<Guid> expandedLoanIds = [];
+    private Guid? editingVehicleId;
+    private string editingVehicleName = string.Empty;
+    private ElementReference editingVehicleInput;
+    private bool shouldFocusEditingVehicle;
+    private string? statusMessage;
+    private bool showAllTransportCosts;
+    private bool showAllTransportBindingPeriods;
+
+    private static IReadOnlyList<Option<VehicleFuelType>> FuelTypeOptions { get; } =
+    [
+        new(VehicleFuelType.Petrol, "transport.fuelType.Petrol"),
+        new(VehicleFuelType.Diesel, "transport.fuelType.Diesel"),
+        new(VehicleFuelType.Hybrid, "transport.fuelType.Hybrid"),
+        new(VehicleFuelType.Electric, "transport.fuelType.Electric"),
+        new(VehicleFuelType.Gas, "transport.fuelType.Gas")
+    ];
+
+    private static IReadOnlyList<Option<TransportVehicleType>> VehicleTypeOptions { get; } =
+    [
+        new(TransportVehicleType.Car, "transport.vehicleType.Car"),
+        new(TransportVehicleType.Truck, "transport.vehicleType.Truck"),
+        new(TransportVehicleType.Other, "transport.vehicleType.Other")
+    ];
+
+    private static IReadOnlyList<Option<VehicleOwnershipType>> OwnershipTypeOptions { get; } =
+    [
+        new(VehicleOwnershipType.Private, "transport.ownershipType.Private"),
+        new(VehicleOwnershipType.Leasing, "transport.ownershipType.Leasing"),
+        new(VehicleOwnershipType.CompanyCar, "transport.ownershipType.CompanyCar")
+    ];
+
+    private IEnumerable<TransportCostDefinition> TransportDefinitions =>
+        AppState.Data.TransportDefinitions
+            .OrderBy(record => record.Subcategory)
+            .ThenBy(record => record.StartYear)
+            .ThenBy(record => record.StartMonth);
+
+    private IReadOnlyList<TransportLoan> TransportLoans =>
+        AppState.Data.TransportLoans
+            .OrderBy(loan => loan.Lender)
+            .ThenBy(loan => loan.LoanStartDate)
+            .ToList();
+    private decimal TotalTransportLoanAmortization => TransportLoans.Sum(GetActiveAmortizationAmount);
+    private decimal TotalTransportLoanRemainingDebt => TransportLoans.Sum(loan => AppState.GetLoanCurrentBalance(loan.Id));
+
+    private bool IsLoanExpanded(Guid loanId) => expandedLoanIds.Contains(loanId);
+
+    private void ToggleLoanDetails(Guid loanId)
+    {
+        if (!expandedLoanIds.Add(loanId))
+        {
+            expandedLoanIds.Remove(loanId);
+        }
+    }
+
+    private IReadOnlyList<TransportVehicle> TransportVehicles =>
+        AppState.Data.TransportVehicles
+            .OrderBy(vehicle => vehicle.Name)
+            .ThenBy(vehicle => vehicle.ModelYear)
+            .ToList();
+
+    private IReadOnlyList<TransportLeasingContract> TransportLeasingContracts =>
+        AppState.Data.TransportLeasingContracts
+            .OrderBy(contract => contract.StartDate)
+            .ThenBy(contract => contract.EndDate)
+            .ToList();
+    private ClosedMonth? LatestClosedMonth => AppState.GetClosedMonths().LastOrDefault();
+
+    protected override void OnInitialized()
+    {
+        AppState.Changed += HandleChanged;
+        Localizer.Changed += HandleChanged;
+        ResetForms();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (shouldFocusEditingVehicle)
+        {
+            shouldFocusEditingVehicle = false;
+            await editingVehicleInput.FocusAsync();
+        }
+    }
+
+    private async Task HandleAddCostAsync()
+    {
+        var date = DateOnly.FromDateTime(costForm.Date!.Value);
+        await AppState.AddOneTimeExpenseAsync(
+            costForm.Amount,
+            date.Year,
+            date.Month,
+            ExpenseCategory.Transport,
+            costForm.Subcategory,
+            costForm.Description,
+            transportVehicleId: costForm.VehicleId,
+            transactionDate: date);
+
+        costForm = new TransportCostFormModel();
+        ResetForms();
+        statusMessage = Localizer["transport.costAdded"];
+    }
+
+    private async Task HandleAddDefinitionAsync()
+    {
+        var startDate = DateOnly.FromDateTime(definitionForm.StartDate!.Value);
+        var endDate = DateOnly.FromDateTime(definitionForm.EndDate!.Value);
+        if (endDate < startDate)
+        {
+            statusMessage = Localizer["validation.endDateOnOrAfterStartDate"];
+            return;
+        }
+
+        await AppState.AddTransportDefinitionAsync(
+            definitionForm.Amount,
+            definitionForm.IntervalMonths,
+            startDate.Year,
+            startDate.Month,
+            endDate.Year,
+            endDate.Month,
+            definitionForm.Subcategory,
+            definitionForm.Description,
+            definitionForm.VehicleId!.Value);
+
+        definitionForm = new TransportDefinitionFormModel();
+        ResetForms();
+        statusMessage = Localizer["transport.definitionAdded"];
+    }
+
+    private async Task HandleAddLoanAsync()
+    {
+        await AppState.AddTransportLoanAsync(
+            loanForm.VehicleId!.Value,
+            loanForm.Lender,
+            DateOnly.FromDateTime(loanForm.LoanStartDate!.Value),
+            loanForm.InitialLoanAmount,
+            loanForm.RemainingDebt);
+
+        loanForm = new TransportLoanFormModel();
+        ResetForms();
+        statusMessage = Localizer["transport.loanAdded"];
+    }
+
+    private async Task HandleAddBindingPeriodAsync(Guid loanId)
+    {
+        var form = GetBindingPeriodForm(loanId);
+        var startDate = DateOnly.FromDateTime(form.StartDate!.Value);
+        var endDate = DateOnly.FromDateTime(form.EndDate!.Value);
+
+        if (endDate < startDate)
+        {
+            statusMessage = Localizer["validation.endDateOnOrAfterStartDate"];
+            return;
+        }
+
+        try
+        {
+            await AppState.AddLoanInterestBindingPeriodAsync(loanId, startDate, endDate, form.InterestRate, form.MonthlyAmortization);
+            bindingPeriodForms[loanId] = CreateBindingPeriodForm();
+            bindingPeriodEditContexts[loanId] = new EditContext(bindingPeriodForms[loanId]);
+            statusMessage = Localizer["transport.bindingPeriodAdded"];
+        }
+        catch (InvalidOperationException)
+        {
+            statusMessage = Localizer["validation.loanBindingPeriodOverlap"];
+        }
+    }
+
+    private async Task HandleAddLeasingContractAsync()
+    {
+        var startDate = DateOnly.FromDateTime(leasingForm.StartDate!.Value);
+        var endDate = DateOnly.FromDateTime(leasingForm.EndDate!.Value);
+        if (endDate < startDate)
+        {
+            statusMessage = Localizer["validation.endDateOnOrAfterStartDate"];
+            return;
+        }
+
+        try
+        {
+            await AppState.AddTransportLeasingContractAsync(leasingForm.VehicleId!.Value, startDate, endDate, leasingForm.MonthlyCost);
+            leasingForm = new TransportLeasingFormModel();
+            ResetForms();
+            statusMessage = Localizer["transport.leasingContractAdded"];
+        }
+        catch (InvalidOperationException)
+        {
+            statusMessage = Localizer["validation.transportLeasingOverlap"];
+        }
+    }
+
+    private async Task HandleAddVehicleAsync()
+    {
+        await AppState.AddTransportVehicleAsync(
+            vehicleForm.Name,
+            vehicleForm.ModelYear,
+            vehicleForm.Mileage,
+            vehicleForm.FuelType,
+            vehicleForm.VehicleType,
+            vehicleForm.OwnershipType,
+            vehicleForm.PurchasePrice,
+            vehicleForm.EstimatedSaleValue);
+
+        vehicleForm = new TransportVehicleFormModel();
+        ResetForms();
+        statusMessage = Localizer["transport.vehicleAdded"];
+    }
+
+    private async Task HandleDeleteExpenseAsync(ExpenseEntry expense)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { dialog => dialog.Title, Localizer["dialog.deleteTitle"] },
+            { dialog => dialog.Message, string.Format(Localizer["transport.deleteCostMessage"], AppState.GetExpenseDescriptionDisplay(expense)) },
+            { dialog => dialog.ConfirmText, Localizer["action.delete"] },
+            { dialog => dialog.CancelText, Localizer["action.cancel"] }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(Localizer["dialog.deleteTitle"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        await AppState.RemoveExpenseAsync(expense.Id);
+        statusMessage = Localizer["transport.costDeleted"];
+    }
+
+    private Task HandleShowAllTransportCostsChanged(bool value)
+    {
+        showAllTransportCosts = value;
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleDeleteDefinitionAsync(TransportCostDefinition definition)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { dialog => dialog.Title, Localizer["dialog.deleteTitle"] },
+            { dialog => dialog.Message, string.Format(Localizer["transport.deleteDefinitionMessage"], definition.Subcategory) },
+            { dialog => dialog.ConfirmText, Localizer["action.delete"] },
+            { dialog => dialog.CancelText, Localizer["action.cancel"] }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(Localizer["dialog.deleteTitle"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        await AppState.RemoveTransportDefinitionAsync(definition.Id);
+        statusMessage = Localizer["transport.definitionDeleted"];
+    }
+
+    private async Task HandleArchiveDefinitionAsync(TransportCostDefinition definition)
+    {
+        await AppState.ArchiveTransportDefinitionAsync(definition.Id);
+        statusMessage = Localizer["transport.definitionArchived"];
+    }
+
+    private async Task HandleArchiveExpiredDefinitionsAsync()
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { dialog => dialog.Title, Localizer["dialog.archiveTitle"] },
+            { dialog => dialog.Message, Localizer["transport.archiveExpiredDefinitionsMessage"] },
+            { dialog => dialog.ConfirmText, Localizer["action.archiveAll"] },
+            { dialog => dialog.CancelText, Localizer["action.cancel"] },
+            { dialog => dialog.ConfirmColor, Color.Warning }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(Localizer["dialog.archiveTitle"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        var expiredDefinitions = AppState.Data.TransportDefinitions.Where(IsExpiredDefinition).ToList();
+        var archivedCount = 0;
+
+        foreach (var definition in expiredDefinitions)
+        {
+            if (await AppState.ArchiveTransportDefinitionAsync(definition.Id))
+            {
+                archivedCount++;
+            }
+        }
+
+        statusMessage = archivedCount > 0
+            ? string.Format(Localizer["definitions.archivedCount"], archivedCount)
+            : Localizer["definitions.noneArchived"];
+    }
+
+    private void HandleRenewDefinition(TransportCostDefinition definition)
+    {
+        var nextStartDate = new DateTime(definition.EndYear, definition.EndMonth, 1).AddMonths(1);
+        definitionForm = new TransportDefinitionFormModel
+        {
+            VehicleId = definition.VehicleId,
+            Description = definition.Description,
+            Subcategory = definition.Subcategory,
+            Amount = definition.Amount,
+            IntervalMonths = definition.IntervalMonths,
+            StartDate = nextStartDate,
+            EndDate = null
+        };
+
+        definitionEditContext = new EditContext(definitionForm);
+        statusMessage = Localizer["definitions.renewPrepared"];
+    }
+
+    private async Task HandleDeleteLoanAsync(TransportLoan loan)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { dialog => dialog.Title, Localizer["dialog.deleteTitle"] },
+            { dialog => dialog.Message, string.Format(Localizer["transport.deleteLoanMessage"], loan.Lender) },
+            { dialog => dialog.ConfirmText, Localizer["action.delete"] },
+            { dialog => dialog.CancelText, Localizer["action.cancel"] }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(Localizer["dialog.deleteTitle"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        await AppState.RemoveTransportLoanAsync(loan.Id);
+        bindingPeriodForms.Remove(loan.Id);
+        bindingPeriodEditContexts.Remove(loan.Id);
+        statusMessage = Localizer["transport.loanDeleted"];
+    }
+
+    private async Task HandleBackfillLoanAmortizationAsync(Guid loanId)
+    {
+        var parameters = new DialogParameters<BackfillLoanAmortizationDialog>
+        {
+            { dialog => dialog.InitialAmortizationAmount, GetSuggestedBackfillAmortizationAmount(loanId) },
+            { dialog => dialog.InitialInterestAmount, GetSuggestedBackfillInterestAmount(loanId) }
+        };
+
+        var dialog = await DialogService.ShowAsync<BackfillLoanAmortizationDialog>(Localizer["loans.backfillAmortization"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        if (result.Data is not BackfillLoanAmortizationDialog.BackfillLoanAmortizationDialogModel model ||
+            !model.StartDate.HasValue ||
+            !model.EndDate.HasValue)
+        {
+            return;
+        }
+
+        var createdCount = await AppState.BackfillLoanExpensesAsync(
+            loanId,
+            DateOnly.FromDateTime(model.StartDate.Value),
+            DateOnly.FromDateTime(model.EndDate.Value),
+            model.MonthlyAmortizationAmount,
+            model.MonthlyInterestAmount);
+
+        statusMessage = createdCount > 0
+            ? string.Format(Localizer["loans.backfillCompleted"], createdCount)
+            : Localizer["loans.backfillNothingCreated"];
+    }
+
+    private async Task HandleDeleteBindingPeriodAsync(LoanInterestBindingPeriod period)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { dialog => dialog.Title, Localizer["dialog.deleteTitle"] },
+            { dialog => dialog.Message, string.Format(Localizer["transport.deleteBindingPeriodMessage"], FormatDate(period.StartMonth), FormatDate(period.EndMonth)) },
+            { dialog => dialog.ConfirmText, Localizer["action.delete"] },
+            { dialog => dialog.CancelText, Localizer["action.cancel"] }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(Localizer["dialog.deleteTitle"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        await AppState.RemoveLoanInterestBindingPeriodAsync(period.Id);
+        statusMessage = Localizer["transport.bindingPeriodDeleted"];
+    }
+
+    private async Task HandleDeleteLeasingContractAsync(TransportLeasingContract contract)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { dialog => dialog.Title, Localizer["dialog.deleteTitle"] },
+            { dialog => dialog.Message, string.Format(Localizer["transport.deleteLeasingContractMessage"], FormatDate(contract.StartDate), FormatDate(contract.EndDate)) },
+            { dialog => dialog.ConfirmText, Localizer["action.delete"] },
+            { dialog => dialog.CancelText, Localizer["action.cancel"] }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(Localizer["dialog.deleteTitle"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        await AppState.RemoveTransportLeasingContractAsync(contract.Id);
+        statusMessage = Localizer["transport.leasingContractDeleted"];
+    }
+
+    private async Task HandleDeleteVehicleAsync(TransportVehicle vehicle)
+    {
+        var parameters = new DialogParameters<ConfirmDialog>
+        {
+            { dialog => dialog.Title, Localizer["dialog.deleteTitle"] },
+            { dialog => dialog.Message, string.Format(Localizer["transport.deleteVehicleMessage"], vehicle.Name) },
+            { dialog => dialog.ConfirmText, Localizer["action.delete"] },
+            { dialog => dialog.CancelText, Localizer["action.cancel"] }
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(Localizer["dialog.deleteTitle"], parameters);
+        if (dialog is null)
+        {
+            return;
+        }
+
+        var result = await dialog.Result;
+        if (result?.Canceled ?? true)
+        {
+            return;
+        }
+
+        try
+        {
+            await AppState.RemoveTransportVehicleAsync(vehicle.Id);
+            statusMessage = Localizer["transport.vehicleDeleted"];
+        }
+        catch (InvalidOperationException)
+        {
+            statusMessage = Localizer["validation.transportVehicleInUse"];
+        }
+    }
+
+    private void BeginEditVehicleName(TransportVehicle vehicle)
+    {
+        editingVehicleId = vehicle.Id;
+        editingVehicleName = vehicle.Name;
+        shouldFocusEditingVehicle = true;
+    }
+
+    private void HandleVehicleNameInput(ChangeEventArgs args)
+    {
+        editingVehicleName = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task HandleVehicleNameKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or "NumpadEnter" or "Tab")
+        {
+            await SaveEditedVehicleNameAsync();
+            return;
+        }
+
+        if (args.Key == "Escape")
+        {
+            CancelEditedVehicleName();
+        }
+    }
+
+    private async Task HandleVehicleNameBlurAsync(FocusEventArgs _)
+    {
+        await SaveEditedVehicleNameAsync();
+    }
+
+    private async Task SaveEditedVehicleNameAsync()
+    {
+        if (!editingVehicleId.HasValue)
+        {
+            return;
+        }
+
+        var normalizedName = editingVehicleName.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            CancelEditedVehicleName();
+            return;
+        }
+
+        await AppState.UpdateTransportVehicleNameAsync(editingVehicleId.Value, normalizedName);
+        CancelEditedVehicleName();
+    }
+
+    private void CancelEditedVehicleName()
+    {
+        editingVehicleId = null;
+        editingVehicleName = string.Empty;
+        shouldFocusEditingVehicle = false;
+    }
+
+    private void ResetForms()
+    {
+        var today = DateTime.Today;
+        var singleVehicleId = TransportVehicles.Count == 1 ? TransportVehicles[0].Id : (Guid?)null;
+
+        costForm.Date ??= today;
+        costForm.VehicleId ??= singleVehicleId;
+        definitionForm.StartDate ??= new DateTime(today.Year, today.Month, 1);
+        definitionForm.EndDate ??= new DateTime(today.Year, today.Month, 1);
+        definitionForm.IntervalMonths = 1;
+        definitionForm.VehicleId ??= singleVehicleId;
+        loanForm.LoanStartDate ??= today;
+        leasingForm.StartDate ??= new DateTime(today.Year, today.Month, 1);
+        leasingForm.EndDate ??= new DateTime(today.Year, today.Month, 1);
+        vehicleForm.ModelYear = vehicleForm.ModelYear == 0 ? today.Year : vehicleForm.ModelYear;
+        vehicleForm.FuelType = vehicleForm.FuelType == 0 ? VehicleFuelType.Petrol : vehicleForm.FuelType;
+        vehicleForm.VehicleType = vehicleForm.VehicleType == 0 ? TransportVehicleType.Car : vehicleForm.VehicleType;
+        vehicleForm.OwnershipType = vehicleForm.OwnershipType == 0 ? VehicleOwnershipType.Private : vehicleForm.OwnershipType;
+
+        costEditContext = new EditContext(costForm);
+        definitionEditContext = new EditContext(definitionForm);
+        loanEditContext = new EditContext(loanForm);
+        leasingEditContext = new EditContext(leasingForm);
+        vehicleEditContext = new EditContext(vehicleForm);
+    }
+
+    private bool HasExpiredDefinitions() => AppState.Data.TransportDefinitions.Any(IsExpiredDefinition);
+
+    private static bool IsExpiredDefinition(TransportCostDefinition definition) =>
+        new DateOnly(definition.EndYear, definition.EndMonth, 1) < new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1);
+
+    private LoanBindingPeriodFormModel GetBindingPeriodForm(Guid loanId)
+    {
+        EnsureLoanForms(loanId);
+        return bindingPeriodForms[loanId];
+    }
+
+    private EditContext GetBindingPeriodEditContext(Guid loanId)
+    {
+        EnsureLoanForms(loanId);
+        return bindingPeriodEditContexts[loanId];
+    }
+
+    private void EnsureLoanForms(Guid loanId)
+    {
+        if (!bindingPeriodForms.ContainsKey(loanId))
+        {
+            bindingPeriodForms[loanId] = CreateBindingPeriodForm();
+            bindingPeriodEditContexts[loanId] = new EditContext(bindingPeriodForms[loanId]);
+        }
+
+    }
+
+    private static LoanBindingPeriodFormModel CreateBindingPeriodForm()
+    {
+        var today = DateTime.Today;
+        return new LoanBindingPeriodFormModel
+        {
+            StartDate = new DateTime(today.Year, today.Month, 1),
+            EndDate = new DateTime(today.Year, today.Month, 1)
+        };
+    }
+
+    private IReadOnlyList<LoanInterestBindingPeriod> GetLoanInterestBindingPeriods(Guid loanId) =>
+        AppState.Data.LoanInterestBindingPeriods
+            .Where(period => period.LoanId == loanId)
+            .OrderBy(period => period.StartMonth)
+            .ThenBy(period => period.EndMonth)
+            .ToList();
+
+    private IReadOnlyList<LoanInterestBindingPeriod> GetVisibleLoanInterestBindingPeriods(Guid loanId)
+    {
+        var periods = GetLoanInterestBindingPeriods(loanId);
+        if (showAllTransportBindingPeriods)
+        {
+            return periods;
+        }
+
+        var activePeriod = GetActiveLoanInterestBindingPeriod(loanId);
+        return activePeriod is null ? [] : [activePeriod];
+    }
+
+    private LoanInterestBindingPeriod? GetActiveLoanInterestBindingPeriod(Guid loanId)
+    {
+        var currentMonth = new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1);
+        return GetLoanInterestBindingPeriods(loanId)
+            .Where(period => CoversMonth(period.StartMonth, period.EndMonth, currentMonth))
+            .OrderByDescending(period => period.StartMonth)
+            .ThenByDescending(period => period.EndMonth)
+            .FirstOrDefault();
+    }
+
+    private bool HasActiveBindingPeriod(Guid loanId) => GetActiveLoanInterestBindingPeriod(loanId) is not null;
+
+    private string GetActiveBindingRateDisplay(Guid loanId)
+    {
+        var activePeriod = GetActiveLoanInterestBindingPeriod(loanId);
+        return activePeriod is null ? "-" : FormatInterestRate(activePeriod.InterestRate);
+    }
+
+    private string GetActiveAmortizationDisplay(Guid loanId)
+    {
+        var activePeriod = GetActiveLoanInterestBindingPeriod(loanId);
+        return activePeriod is null ? "-" : AppState.FormatCurrency(activePeriod.MonthlyAmortization);
+    }
+
+    private decimal GetActiveAmortizationAmount(TransportLoan loan)
+    {
+        var activePeriod = GetActiveLoanInterestBindingPeriod(loan.Id);
+        return activePeriod?.MonthlyAmortization ?? loan.CurrentAmortization;
+    }
+
+    private decimal GetSuggestedBackfillAmortizationAmount(Guid loanId)
+    {
+        var activePeriod = GetActiveLoanInterestBindingPeriod(loanId);
+        return activePeriod?.MonthlyAmortization ?? TransportLoans.FirstOrDefault(loan => loan.Id == loanId)?.CurrentAmortization ?? 0m;
+    }
+
+    private decimal GetSuggestedBackfillInterestAmount(Guid loanId)
+    {
+        _ = loanId;
+        return 0m;
+    }
+
+    private string GetActiveBindingPeriodDisplay(Guid loanId)
+    {
+        var activePeriod = GetActiveLoanInterestBindingPeriod(loanId);
+        return activePeriod is null
+            ? "-"
+            : $"{FormatYearMonth(activePeriod.StartMonth)}\u2014{FormatYearMonth(activePeriod.EndMonth)}";
+    }
+
+    private static bool CoversMonth(DateOnly startDate, DateOnly endDate, DateOnly month) =>
+        NormalizeMonth(startDate) <= month && month <= NormalizeMonth(endDate);
+
+    private static DateOnly NormalizeMonth(DateOnly date) => new(date.Year, date.Month, 1);
+
+    private IReadOnlyList<MonthlyBalance> GetBalanceEntries(Guid entityId) =>
+        AppState.GetMonthlyBalances(entityId);
+
+    private IReadOnlyList<string> GetSubcategorySuggestions() =>
+        AppState.GetExpenseSubcategorySuggestions(ExpenseCategory.Transport);
+
+    private string GetIntervalLabel(int intervalMonths)
+    {
+        return intervalMonths switch
+        {
+            1 => Localizer["interval.monthly"],
+            3 => Localizer["interval.quarterly"],
+            6 => Localizer["interval.semiAnnual"],
+            12 => Localizer["interval.yearly"],
+            _ => string.Format(Localizer["transport.intervalFallback"], intervalMonths)
+        };
+    }
+
+    private string GetMonthYearLabel(int year, int month) => $"{Localizer[$"month.{month}"]} {year}";
+
+    private static string FormatDate(DateOnly date) => date.ToString("yyyy-MM-dd");
+
+    private static string FormatYearMonth(DateOnly date) => date.ToString("yyyy/MM");
+
+    private static string FormatInterestRate(decimal rate) => $"{rate:0.##}%";
+
+    private string GetVehicleExpensesHeader() =>
+        LatestClosedMonth is null
+            ? Localizer["table.expenses"]
+            : $"{Localizer["table.expenses"]} {LatestClosedMonth.Year}{LatestClosedMonth.Month:00}";
+
+    private decimal GetVehicleExpensesForLatestClosedMonth(Guid vehicleId)
+    {
+        if (LatestClosedMonth is null)
+        {
+            return 0m;
+        }
+
+        return AppState.Data.ExpenseRecords
+            .Where(entry =>
+                entry.TransportVehicleId == vehicleId &&
+                entry.Year == LatestClosedMonth.Year &&
+                entry.Month == LatestClosedMonth.Month)
+            .Sum(entry => entry.Amount);
+    }
+
+    private string GetDefinitionDisplay(TransportCostDefinition definition)
+    {
+        var vehicleName = GetVehicleName(definition.VehicleId);
+        var description = string.IsNullOrWhiteSpace(definition.Description)
+            ? AppState.GetExpenseLabelDisplay(definition.Subcategory)
+            : definition.Description.Trim();
+        return string.IsNullOrWhiteSpace(vehicleName)
+            ? description
+            : $"{vehicleName} - {description}";
+    }
+
+    private string GetVehicleName(Guid? vehicleId)
+    {
+        if (!vehicleId.HasValue)
+        {
+            return string.Empty;
+        }
+
+        return TransportVehicles.FirstOrDefault(vehicle => vehicle.Id == vehicleId.Value)?.Name ?? string.Empty;
+    }
+
+    private void HandleChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        AppState.Changed -= HandleChanged;
+        Localizer.Changed -= HandleChanged;
+    }
+
+    private sealed record Option<TValue>(TValue Value, string LabelKey);
+
+    private sealed class TransportCostFormModel
+    {
+        [Required(ErrorMessage = "Description is required.")]
+        [StringLength(100, ErrorMessage = "Description must be 100 characters or fewer.")]
+        public string Description { get; set; } = string.Empty;
+
+        [Range(typeof(decimal), "0.01", "999999999", ErrorMessage = "Amount must be greater than zero.")]
+        public decimal Amount { get; set; }
+
+        [Required(ErrorMessage = "Date is required.")]
+        public DateTime? Date { get; set; }
+
+        [Required(ErrorMessage = "Subcategory is required.")]
+        [StringLength(60, ErrorMessage = "Subcategory must be 60 characters or fewer.")]
+        public string Subcategory { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vehicle is required.")]
+        public Guid? VehicleId { get; set; }
+    }
+
+    private sealed class TransportDefinitionFormModel
+    {
+        [Required(ErrorMessage = "Description is required.")]
+        [StringLength(100, ErrorMessage = "Description must be 100 characters or fewer.")]
+        public string Description { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Subcategory is required.")]
+        [StringLength(60, ErrorMessage = "Subcategory must be 60 characters or fewer.")]
+        public string Subcategory { get; set; } = string.Empty;
+
+        [Range(typeof(decimal), "0.01", "999999999", ErrorMessage = "Amount must be greater than zero.")]
+        public decimal Amount { get; set; }
+
+        [Required(ErrorMessage = "Start date is required.")]
+        public DateTime? StartDate { get; set; }
+
+        [Required(ErrorMessage = "End date is required.")]
+        public DateTime? EndDate { get; set; }
+
+        [Range(1, 120, ErrorMessage = "Interval must be between 1 and 120 months.")]
+        public int IntervalMonths { get; set; }
+
+        [Required(ErrorMessage = "Vehicle is required.")]
+        public Guid? VehicleId { get; set; }
+    }
+
+    private sealed class TransportLoanFormModel
+    {
+        [Required(ErrorMessage = "Vehicle is required.")]
+        public Guid? VehicleId { get; set; }
+
+        [Required(ErrorMessage = "Lender is required.")]
+        [StringLength(100, ErrorMessage = "Lender must be 100 characters or fewer.")]
+        public string Lender { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Loan start date is required.")]
+        public DateTime? LoanStartDate { get; set; }
+
+        [Range(typeof(decimal), "0.01", "999999999", ErrorMessage = "Initial loan amount must be greater than zero.")]
+        public decimal InitialLoanAmount { get; set; }
+
+        [Range(typeof(decimal), "0.00", "999999999", ErrorMessage = "Remaining debt must be zero or greater.")]
+        public decimal RemainingDebt { get; set; }
+    }
+
+    private sealed class LoanBindingPeriodFormModel
+    {
+        [Required(ErrorMessage = "Start date is required.")]
+        public DateTime? StartDate { get; set; }
+
+        [Required(ErrorMessage = "End date is required.")]
+        public DateTime? EndDate { get; set; }
+
+        [Range(typeof(decimal), "0.00", "100", ErrorMessage = "Interest rate must be zero or greater.")]
+        public decimal InterestRate { get; set; }
+
+        [Range(typeof(decimal), "0.00", "999999999", ErrorMessage = "Monthly amortization amount must be zero or greater.")]
+        public decimal MonthlyAmortization { get; set; }
+    }
+
+    private sealed class TransportLeasingFormModel
+    {
+        [Required(ErrorMessage = "Vehicle is required.")]
+        public Guid? VehicleId { get; set; }
+
+        [Required(ErrorMessage = "Start date is required.")]
+        public DateTime? StartDate { get; set; }
+
+        [Required(ErrorMessage = "End date is required.")]
+        public DateTime? EndDate { get; set; }
+
+        [Range(typeof(decimal), "0.01", "999999999", ErrorMessage = "Monthly cost must be greater than zero.")]
+        public decimal MonthlyCost { get; set; }
+    }
+
+    private sealed class TransportVehicleFormModel
+    {
+        [Required(ErrorMessage = "Name is required.")]
+        [StringLength(100, ErrorMessage = "Name must be 100 characters or fewer.")]
+        public string Name { get; set; } = string.Empty;
+
+        [Range(1900, 3000, ErrorMessage = "Model year must be between 1900 and 3000.")]
+        public int ModelYear { get; set; }
+
+        [Range(0, int.MaxValue, ErrorMessage = "Mileage must be zero or greater.")]
+        public int Mileage { get; set; }
+
+        public VehicleFuelType FuelType { get; set; } = VehicleFuelType.Petrol;
+
+        public TransportVehicleType VehicleType { get; set; } = TransportVehicleType.Car;
+
+        public VehicleOwnershipType OwnershipType { get; set; } = VehicleOwnershipType.Private;
+
+        [Range(typeof(decimal), "0.00", "999999999", ErrorMessage = "Purchase price must be zero or greater.")]
+        public decimal? PurchasePrice { get; set; }
+
+        [Range(typeof(decimal), "0.00", "999999999", ErrorMessage = "Estimated sale value must be zero or greater.")]
+        public decimal? EstimatedSaleValue { get; set; }
+    }
+
+}
+
+<style>
+    .vehicle-edit-cell {
+        min-width: 160px;
+        cursor: text;
+    }
+
+    .vehicle-edit-input {
+        min-width: 140px;
+    }
+</style>

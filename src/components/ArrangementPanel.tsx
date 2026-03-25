@@ -6,11 +6,13 @@ import { Input } from "./ui/input";
 interface ArrangementPanelProps {
   savedLoops: SavedLoop[];
   arrangementName: string;
+  arrangementUrl: string;
   onRename: (id: string, name: string) => void;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onRemove: (id: string) => void;
   onArrangementNameChange: (name: string) => void;
+  onArrangementUrlChange: (url: string) => void;
   onPlayArrangement: () => void;
   onStopArrangement: () => void;
   onSaveArrangement: () => void;
@@ -19,11 +21,13 @@ interface ArrangementPanelProps {
 export function ArrangementPanel({
   savedLoops,
   arrangementName,
+  arrangementUrl,
   onRename,
   onMoveUp,
   onMoveDown,
   onRemove,
   onArrangementNameChange,
+  onArrangementUrlChange,
   onPlayArrangement,
   onStopArrangement,
   onSaveArrangement,
@@ -99,6 +103,14 @@ export function ArrangementPanel({
           onChange={(event) => onArrangementNameChange(event.target.value)}
           placeholder="Arrangement name"
           aria-label="Arrangement name"
+        />
+
+        <Input
+          type="url"
+          value={arrangementUrl}
+          onChange={(event) => onArrangementUrlChange(event.target.value)}
+          placeholder="Arrangement URL"
+          aria-label="Arrangement URL"
         />
 
         <Button type="button" variant="secondary" onClick={onSaveArrangement} disabled={!canSaveArrangement} className="w-full">

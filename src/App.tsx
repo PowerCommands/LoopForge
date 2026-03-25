@@ -5,7 +5,9 @@ import { LeftSidebar } from "./components/LeftSidebar";
 import { LyricsWorkspace } from "./components/LyricsWorkspace";
 import { MainWorkspace } from "./components/MainWorkspace";
 import { RightSidebar } from "./components/RightSidebar";
+import { SettingsWorkspace } from "./components/SettingsWorkspace";
 import { TopBar } from "./components/TopBar";
+import { useTheme } from "./components/ThemeProvider";
 import { createSavedLoop, getDefaultLoopName, moveSavedLoop } from "./music/arrangement";
 import {
   createStoredArrangement,
@@ -13,10 +15,11 @@ import {
   saveStoredArrangements,
   type StoredArrangement,
 } from "./music/arrangementLibrary";
-import { DEFAULT_SETTINGS, KEY_OPTIONS } from "./music/constants";
+import { DEFAULT_SEQUENCE_SETTINGS, DEFAULT_SETTINGS, KEY_OPTIONS, normalizeLoopSettings } from "./music/constants";
 import { generateLoop } from "./music/generator";
 import { downloadArrangementMidi, exportLoopToMidi } from "./midi/exportMidi";
 import type { LoopSettings, Mood, SavedLoop, ScaleType } from "./music/types";
+import { APP_STORAGE_KEYS } from "./lib/appStorage";
 import { playbackEngine } from "./playback/transport";
 
 const MOOD_OPTIONS: Mood[] = ["Balanced", "Dark", "Bright", "Sparse", "Intense", "Calm"];
@@ -29,6 +32,10 @@ const SETTINGS_COOKIE_KEYS = {
   tempo: "loop-forge-tempo",
   length: "loop-forge-length",
   mood: "loop-forge-mood",
+  patternLength: "loop-forge-pattern-length",
+  density: "loop-forge-density",
+  variation: "loop-forge-variation",
+  style: "loop-forge-style",
 } as const;
 
 function getCookieValue(name: string): string | null {
@@ -61,22 +68,39 @@ function getInitialSettings(): LoopSettings {
   const tempo = Number(getCookieValue(SETTINGS_COOKIE_KEYS.tempo));
   const length = Number(getCookieValue(SETTINGS_COOKIE_KEYS.length));
   const mood = getCookieValue(SETTINGS_COOKIE_KEYS.mood);
+  const patternLength = Number(getCookieValue(SETTINGS_COOKIE_KEYS.patternLength));
+  const density = getCookieValue(SETTINGS_COOKIE_KEYS.density);
+  const variation = getCookieValue(SETTINGS_COOKIE_KEYS.variation);
+  const style = getCookieValue(SETTINGS_COOKIE_KEYS.style);
 
-  return {
-    ...DEFAULT_SETTINGS,
+  return normalizeLoopSettings({
     key: key && (KEY_OPTIONS as readonly string[]).includes(key) ? key : DEFAULT_SETTINGS.key,
     scale: scale === "Major" || scale === "Minor" ? scale : DEFAULT_SETTINGS.scale,
     tempo: Number.isFinite(tempo) && tempo >= 60 && tempo <= 180 ? tempo : DEFAULT_SETTINGS.tempo,
     length: length === 2 || length === 4 ? length : DEFAULT_SETTINGS.length,
     mood: mood && MOOD_OPTIONS.includes(mood as Mood) ? (mood as Mood) : DEFAULT_SETTINGS.mood,
-  };
+    layers: DEFAULT_SETTINGS.layers,
+    sequence: {
+      patternLength: patternLength === 8 || patternLength === 16 ? patternLength : DEFAULT_SEQUENCE_SETTINGS.patternLength,
+      density: density === "low" || density === "medium" || density === "high" ? density : DEFAULT_SEQUENCE_SETTINGS.density,
+      variation:
+        variation === "low" || variation === "medium" || variation === "high"
+          ? variation
+          : DEFAULT_SEQUENCE_SETTINGS.variation,
+      style:
+        style === "straight" || style === "syncopated" || style === "flowing" || style === "arp-like"
+          ? style
+          : DEFAULT_SEQUENCE_SETTINGS.style,
+    },
+  });
 }
 
 export default function App() {
+  const { setTheme } = useTheme();
   const [settings, setSettings] = useState<LoopSettings>(() => getInitialSettings());
   const [loop, setLoop] = useState(() => generateLoop(getInitialSettings()));
   const [isPlaying, setIsPlaying] = useState(false);
-  const [activeView, setActiveView] = useState<"studio" | "library" | "lyrics">("studio");
+  const [activeView, setActiveView] = useState<"studio" | "library" | "lyrics" | "settings">("studio");
   const [autoplay, setAutoplay] = useState(() => {
     if (typeof document === "undefined") {
       return false;
@@ -86,14 +110,15 @@ export default function App() {
   });
   const [volume, setVolume] = useState(() => {
     if (typeof window === "undefined") {
-      return 0.7;
+      return 0.3;
     }
 
     const stored = Number(window.localStorage.getItem(VOLUME_STORAGE_KEY));
-    return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.7;
+    return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.3;
   });
   const [savedLoops, setSavedLoops] = useState<SavedLoop[]>([]);
   const [arrangementName, setArrangementName] = useState("");
+  const [arrangementUrl, setArrangementUrl] = useState("");
   const [storedArrangements, setStoredArrangements] = useState<StoredArrangement[]>(() => loadStoredArrangements());
   const currentLoop = useMemo(() => {
     if (!loop) {
@@ -140,7 +165,21 @@ export default function App() {
     setCookieValue(SETTINGS_COOKIE_KEYS.tempo, String(settings.tempo));
     setCookieValue(SETTINGS_COOKIE_KEYS.length, String(settings.length));
     setCookieValue(SETTINGS_COOKIE_KEYS.mood, settings.mood);
-  }, [settings.key, settings.scale, settings.tempo, settings.length, settings.mood]);
+    setCookieValue(SETTINGS_COOKIE_KEYS.patternLength, String(settings.sequence.patternLength));
+    setCookieValue(SETTINGS_COOKIE_KEYS.density, settings.sequence.density);
+    setCookieValue(SETTINGS_COOKIE_KEYS.variation, settings.sequence.variation);
+    setCookieValue(SETTINGS_COOKIE_KEYS.style, settings.sequence.style);
+  }, [
+    settings.key,
+    settings.scale,
+    settings.tempo,
+    settings.length,
+    settings.mood,
+    settings.sequence.patternLength,
+    settings.sequence.density,
+    settings.sequence.variation,
+    settings.sequence.style,
+  ]);
 
   useEffect(() => {
     saveStoredArrangements(storedArrangements);
@@ -248,11 +287,38 @@ export default function App() {
       return;
     }
 
-    const arrangement = createStoredArrangement(arrangementName.trim(), savedLoops);
+    const arrangement = createStoredArrangement(arrangementName.trim(), arrangementUrl.trim(), savedLoops);
 
     setStoredArrangements((current) => [arrangement, ...current]);
     setArrangementName("");
+    setArrangementUrl("");
     setActiveView("library");
+  };
+
+  const handleArrangementLyricsChange = (arrangementId: string, lyrics: { text1?: string; text2?: string }) => {
+    setStoredArrangements((current) =>
+      current.map((arrangement) =>
+        arrangement.id === arrangementId
+          ? {
+              ...arrangement,
+              text1: lyrics.text1 ?? arrangement.text1,
+              text2: lyrics.text2 ?? arrangement.text2,
+            }
+          : arrangement,
+      ),
+    );
+  };
+
+  const handleStorageChanged = () => {
+    setStoredArrangements(loadStoredArrangements());
+
+    if (typeof window !== "undefined") {
+      const storedVolume = Number(window.localStorage.getItem(APP_STORAGE_KEYS.volume));
+      setVolume(Number.isFinite(storedVolume) && storedVolume >= 0 && storedVolume <= 1 ? storedVolume : 0.3);
+
+      const storedTheme = window.localStorage.getItem(APP_STORAGE_KEYS.theme);
+      setTheme(storedTheme === "light" || storedTheme === "dark" || storedTheme === "system" ? storedTheme : "dark");
+    }
   };
 
   const handleDownloadArrangementMidi = (arrangement: StoredArrangement) => {
@@ -280,7 +346,9 @@ export default function App() {
         activeView === "library" ? (
           <ArrangementLibraryView arrangements={storedArrangements} onDownloadMidi={handleDownloadArrangementMidi} />
         ) : activeView === "lyrics" ? (
-          <LyricsWorkspace arrangements={storedArrangements} />
+          <LyricsWorkspace arrangements={storedArrangements} onArrangementLyricsChange={handleArrangementLyricsChange} />
+        ) : activeView === "settings" ? (
+          <SettingsWorkspace arrangements={storedArrangements} onStorageChanged={handleStorageChanged} />
         ) : undefined
       }
       leftSidebar={
@@ -311,11 +379,13 @@ export default function App() {
           <RightSidebar
             savedLoops={savedLoops}
             arrangementName={arrangementName}
+            arrangementUrl={arrangementUrl}
             onRename={handleRenameSavedLoop}
             onMoveUp={(id) => handleMoveSavedLoop(id, -1)}
             onMoveDown={(id) => handleMoveSavedLoop(id, 1)}
             onRemove={handleRemoveSavedLoop}
             onArrangementNameChange={setArrangementName}
+            onArrangementUrlChange={setArrangementUrl}
             onPlayArrangement={handlePlayArrangement}
             onStopArrangement={handleStop}
             onSaveArrangement={handleSaveArrangement}

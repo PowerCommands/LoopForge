@@ -1,0 +1,198 @@
+@using System.ComponentModel.DataAnnotations
+@inject LocalizationService Localizer
+
+<MudDialog Class="create-savings-account-dialog">
+    <DialogContent>
+        <EditForm EditContext="editContext" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="form-grid mt-3">
+                <div>
+                    <label class="form-label">@GetProviderLabel()</label>
+                    <InputText class="form-control" @bind-Value="model.ProviderName" />
+                    <ValidationMessage For="() => model.ProviderName" />
+                </div>
+                <div>
+                    <label class="form-label">@Localizer["savings.accountName"]</label>
+                    <InputText class="form-control" @bind-Value="model.AccountName" />
+                    <ValidationMessage For="() => model.AccountName" />
+                </div>
+                <div>
+                    <label class="form-label">@Localizer["savings.currentBalance"]</label>
+                    <InputNumber class="form-control" @bind-Value="model.CurrentBalance" />
+                    <ValidationMessage For="() => model.CurrentBalance" />
+                </div>
+                <div>
+                    <label class="form-label">@Localizer["table.period"]</label>
+                    <InputDate class="form-control" @bind-Value="model.CurrentPeriodDate" />
+                    <ValidationMessage For="() => model.CurrentPeriodDate" />
+                </div>
+            </div>
+
+            <div class="section-note mt-3">@Localizer["savings.balancePeriodHelp"]</div>
+
+            <div class="form-check mt-3">
+                <InputCheckbox class="form-check-input" @bind-Value="model.BackfillDeposits" @onchange="HandleBackfillChanged" />
+                <label class="form-check-label">@Localizer["savings.backfillDeposits"]</label>
+            </div>
+
+            @if (model.BackfillDeposits)
+            {
+                <div class="form-grid mt-3">
+                    <div>
+                        <label class="form-label">@Localizer["savings.backfillFromPeriod"]</label>
+                        <InputDate class="form-control" @bind-Value="model.BackfillStartPeriodDate" />
+                        <ValidationMessage For="() => model.BackfillStartPeriodDate" />
+                    </div>
+                    <div>
+                        <label class="form-label">@Localizer["savings.backfillStartBalance"]</label>
+                        <InputNumber class="form-control" @bind-Value="model.BackfillStartBalance" />
+                        <ValidationMessage For="() => model.BackfillStartBalance" />
+                    </div>
+                </div>
+            }
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">@Localizer["action.cancel"]</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit">@Localizer["action.create"]</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    .create-savings-account-dialog .mud-dialog {
+        max-width: 980px;
+        width: min(980px, calc(100vw - 32px));
+        min-height: min(860px, calc(100vh - 32px));
+        max-height: calc(100vh - 32px);
+    }
+    .create-savings-account-dialog .mud-dialog-content {
+        overflow-y: auto;
+    }
+    .create-savings-account-dialog .form-control {
+        min-height: 46px;
+    }
+</style>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public SavingsAccountType AccountType { get; set; }
+
+    private CreateSavingsAccountDialogModel model = new();
+    private EditContext editContext = default!;
+
+    protected override void OnInitialized()
+    {
+        model.AccountType = AccountType;
+        var today = DateTime.Today;
+        model.CurrentPeriodDate = new DateTime(today.Year, today.Month, 1);
+        model.BackfillStartPeriodDate = new DateTime(today.Year, today.Month, 1);
+        editContext = new EditContext(model);
+    }
+
+    private string GetProviderLabel() => AccountType switch
+    {
+        SavingsAccountType.Bank => Localizer["savings.bankName"],
+        SavingsAccountType.Fund => Localizer["savings.depotName"],
+        _ => Localizer["savings.depotName"]
+    };
+
+    private void Submit()
+    {
+        if (!editContext.Validate())
+        {
+            return;
+        }
+
+        HandleSubmit();
+    }
+
+    private void HandleSubmit() => MudDialog.Close(DialogResult.Ok(model));
+
+    private void HandleBackfillChanged(ChangeEventArgs _)
+    {
+        if (model.BackfillDeposits)
+        {
+            model.BackfillStartPeriodDate = model.CurrentPeriodDate;
+        }
+
+        if (!model.BackfillDeposits)
+        {
+            model.BackfillStartBalance = 0m;
+        }
+
+        editContext.NotifyFieldChanged(FieldIdentifier.Create(() => model.BackfillDeposits));
+        editContext.NotifyFieldChanged(FieldIdentifier.Create(() => model.BackfillStartPeriodDate));
+        editContext.NotifyFieldChanged(FieldIdentifier.Create(() => model.BackfillStartBalance));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public sealed class CreateSavingsAccountDialogModel : IValidatableObject
+    {
+        public SavingsAccountType AccountType { get; set; }
+
+        [StringLength(100, ErrorMessage = "Bank name must be 100 characters or fewer.")]
+        public string ProviderName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Account name is required.")]
+        [StringLength(100, ErrorMessage = "Account name must be 100 characters or fewer.")]
+        public string AccountName { get; set; } = string.Empty;
+
+        [Range(typeof(decimal), "0.00", "999999999", ErrorMessage = "Current balance must be zero or greater.")]
+        public decimal CurrentBalance { get; set; }
+
+        [Required(ErrorMessage = "Period is required.")]
+        public DateTime? CurrentPeriodDate { get; set; }
+
+        public bool BackfillDeposits { get; set; }
+
+        public DateTime? BackfillStartPeriodDate { get; set; }
+
+        [Range(typeof(decimal), "0.00", "999999999", ErrorMessage = "Start balance must be zero or greater.")]
+        public decimal BackfillStartBalance { get; set; }
+
+        public DateOnly CurrentPeriod => DateOnly.FromDateTime(CurrentPeriodDate!.Value);
+
+        public DateOnly BackfillStartPeriod => DateOnly.FromDateTime(BackfillStartPeriodDate!.Value);
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (!CurrentPeriodDate.HasValue)
+            {
+                yield return new ValidationResult("Period is required.", [nameof(CurrentPeriodDate)]);
+                yield break;
+            }
+
+            if (!BackfillDeposits)
+            {
+                yield break;
+            }
+
+            if (!BackfillStartPeriodDate.HasValue)
+            {
+                yield return new ValidationResult("Backfill start period is required.", [nameof(BackfillStartPeriodDate)]);
+                yield break;
+            }
+
+            if (BackfillStartPeriod > CurrentPeriod)
+            {
+                yield return new ValidationResult("Backfill start period must be the same as or earlier than the current period.", [nameof(BackfillStartPeriodDate)]);
+            }
+
+            if (BackfillStartBalance > CurrentBalance)
+            {
+                yield return new ValidationResult("Start balance cannot exceed the current balance when backfilling deposits.", [nameof(BackfillStartBalance)]);
+            }
+
+            if (BackfillStartPeriod == CurrentPeriod && BackfillStartBalance != CurrentBalance)
+            {
+                yield return new ValidationResult("If the backfill start period is the same as the current period, the balances must match.", [nameof(BackfillStartPeriodDate), nameof(BackfillStartBalance)]);
+            }
+        }
+    }
+}

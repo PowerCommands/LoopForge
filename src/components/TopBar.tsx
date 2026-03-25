@@ -3,7 +3,7 @@ import favicon from "../../favicon.svg";
 import { useTheme, type Theme } from "./ThemeProvider";
 import { Select } from "./ui/select";
 
-type TopBarView = "studio" | "library" | "lyrics";
+type TopBarView = "studio" | "library" | "lyrics" | "settings";
 
 interface TopBarProps {
   status: string;
@@ -66,6 +66,14 @@ export function TopBar({ status, volume, activeView, onVolumeChange, onViewChang
               onClick={() => onViewChange("lyrics")}
             >
               Lyrics
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={activeView === "settings" ? "default" : "secondary"}
+              onClick={() => onViewChange("settings")}
+            >
+              Settings
             </Button>
           </div>
         </div>

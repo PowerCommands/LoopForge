@@ -1,4 +1,5 @@
-import { cloneGeneratedLoop } from "./arrangement";
+import { cloneGeneratedLoop, normalizeGeneratedLoop } from "./arrangement";
+import { APP_STORAGE_KEYS } from "../lib/appStorage";
 import type { SavedLoop } from "./types";
 
 export interface StoredArrangementLoop {
@@ -10,19 +11,25 @@ export interface StoredArrangementLoop {
 export interface StoredArrangement {
   id: string;
   name: string;
+  url: string;
   tempo: number;
   createdAt: string;
+  text1: string;
+  text2: string;
   loops: StoredArrangementLoop[];
 }
 
-const ARRANGEMENT_LIBRARY_STORAGE_KEY = "loop-forge-arrangement-library";
+export const ARRANGEMENT_LIBRARY_STORAGE_KEY = APP_STORAGE_KEYS.arrangements;
 
-export function createStoredArrangement(name: string, savedLoops: SavedLoop[]): StoredArrangement {
+export function createStoredArrangement(name: string, url: string, savedLoops: SavedLoop[]): StoredArrangement {
   return {
     id: `arrangement-${Date.now()}`,
     name,
+    url,
     tempo: savedLoops[0]?.loop.settings.tempo ?? 120,
     createdAt: new Date().toISOString(),
+    text1: "",
+    text2: "",
     loops: savedLoops.map((savedLoop) => ({
       id: savedLoop.id,
       name: savedLoop.name,
@@ -43,8 +50,39 @@ export function loadStoredArrangements(): StoredArrangement[] {
   }
 
   try {
-    const parsed = JSON.parse(raw) as StoredArrangement[];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(raw) as Partial<StoredArrangement>[];
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.flatMap((arrangement) => {
+      if (
+        typeof arrangement?.id !== "string" ||
+        typeof arrangement?.name !== "string" ||
+        typeof arrangement?.tempo !== "number" ||
+        typeof arrangement?.createdAt !== "string" ||
+        !Array.isArray(arrangement?.loops)
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          id: arrangement.id,
+          name: arrangement.name,
+          url: typeof arrangement.url === "string" ? arrangement.url : "",
+          tempo: arrangement.tempo,
+          createdAt: arrangement.createdAt,
+          text1: typeof arrangement.text1 === "string" ? arrangement.text1 : "",
+          text2: typeof arrangement.text2 === "string" ? arrangement.text2 : "",
+          loops: arrangement.loops.map((loop) => ({
+            ...loop,
+            loop: normalizeGeneratedLoop(loop.loop),
+          })),
+        },
+      ];
+    });
   } catch {
     return [];
   }

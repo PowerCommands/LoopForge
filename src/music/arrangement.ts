@@ -1,16 +1,14 @@
+import { normalizeLoopSettings } from "./constants";
 import type { GeneratedLoop, SavedLoop } from "./types";
 
 export function getDefaultLoopName(savedLoops: SavedLoop[]): string {
   return `Loop ${savedLoops.length + 1}`;
 }
 
-export function cloneGeneratedLoop(loop: GeneratedLoop): GeneratedLoop {
+export function normalizeGeneratedLoop(loop: GeneratedLoop): GeneratedLoop {
   return {
     ...loop,
-    settings: {
-      ...loop.settings,
-      layers: { ...loop.settings.layers },
-    },
+    settings: normalizeLoopSettings(loop.settings),
     chords: loop.chords.map((chord) => ({
       ...chord,
       notes: [...chord.notes],
@@ -18,6 +16,10 @@ export function cloneGeneratedLoop(loop: GeneratedLoop): GeneratedLoop {
     melody: loop.melody.map((note) => ({ ...note })),
     bass: loop.bass.map((note) => ({ ...note })),
   };
+}
+
+export function cloneGeneratedLoop(loop: GeneratedLoop): GeneratedLoop {
+  return normalizeGeneratedLoop(loop);
 }
 
 export function createSavedLoop(loop: GeneratedLoop, name: string): SavedLoop {

@@ -6,6 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { APP_STORAGE_KEYS } from "../lib/appStorage";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -14,16 +15,16 @@ interface ThemeContextValue {
   setTheme: (theme: Theme) => void;
 }
 
-const THEME_STORAGE_KEY = "loop-forge-theme";
+export const THEME_STORAGE_KEY = APP_STORAGE_KEYS.theme;
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function getStoredTheme(): Theme {
   if (typeof window === "undefined") {
-    return "system";
+    return "dark";
   }
 
   const value = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return value === "light" || value === "dark" || value === "system" ? value : "system";
+  return value === "light" || value === "dark" || value === "system" ? value : "dark";
 }
 
 function applyTheme(theme: Theme) {

@@ -1,29 +1,51 @@
 import { LoopVisualization } from "./LoopVisualization";
-import { LoopSummary } from "./LoopSummary";
-import { PlaceholderCard } from "./PlaceholderCard";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import type { GeneratedLoop } from "../music/types";
+import type { EditableLoop } from "../music/editor";
 
 interface MainWorkspaceProps {
   loop: GeneratedLoop | null;
+  editableLoop: EditableLoop | null;
+  onLoopChange: (loop: EditableLoop) => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onReset: () => void;
+  onSave: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  hasUnsavedChanges: boolean;
 }
 
-export function MainWorkspace({ loop }: MainWorkspaceProps) {
+export function MainWorkspace({
+  loop,
+  editableLoop,
+  onLoopChange,
+  onUndo,
+  onRedo,
+  onReset,
+  onSave,
+  canUndo,
+  canRedo,
+  hasUnsavedChanges,
+}: MainWorkspaceProps) {
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b border-border/70 bg-white/35 pb-3 dark:bg-white/5">
         <CardTitle>Current Loop</CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-4 px-5 pb-5 pt-4 xl:grid-cols-[minmax(300px,360px)_minmax(0,1fr)]">
-        <LoopSummary loop={loop} />
-        <div className="flex flex-col gap-5">
-          <LoopVisualization loop={loop} />
-          <PlaceholderCard
-            title="Layer Inspection Placeholder"
-            description="Per-layer controls, note density previews, and detailed musical inspection will appear here later."
-            className="min-h-[180px] dark:bg-[#17152d]"
-          />
-        </div>
+      <CardContent className="px-5 pb-5 pt-4">
+        <LoopVisualization
+          loop={loop}
+          editableLoop={editableLoop}
+          onLoopChange={onLoopChange}
+          onUndo={onUndo}
+          onRedo={onRedo}
+          onReset={onReset}
+          onSave={onSave}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          hasUnsavedChanges={hasUnsavedChanges}
+        />
       </CardContent>
     </Card>
   );

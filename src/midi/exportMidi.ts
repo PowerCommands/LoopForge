@@ -66,6 +66,19 @@ function createExportFilename(loop: GeneratedLoop): string {
   return `loop-forge_${key}_${scale}_${loop.settings.tempo}_${mood}.mid`;
 }
 
+function getArrangementSeconds(savedLoops: SavedLoop[]): number {
+  return savedLoops.reduce((total, savedLoop) => total + savedLoop.seconds, 0);
+}
+
+function createArrangementExportFilename(savedLoops: SavedLoop[], filename: string): string {
+  const safeBaseName = filename.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").replace(/\.+$/, "");
+  const baseName = safeBaseName.length > 0 ? safeBaseName : "loop-forge-arrangement";
+  const tempo = savedLoops[0]?.loop.settings.tempo ?? 120;
+  const seconds = getArrangementSeconds(savedLoops);
+
+  return sanitizeMidiFilename(`${baseName}_${tempo}_${seconds}sec`);
+}
+
 function sanitizeMidiFilename(filename: string): string {
   const trimmed = filename.trim().replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-");
   const withoutExtension = trimmed.toLowerCase().endsWith(".mid") ? trimmed.slice(0, -4) : trimmed;
@@ -231,5 +244,5 @@ export function downloadArrangementMidi(savedLoops: SavedLoop[], filename: strin
     return;
   }
 
-  downloadMidiFile(createArrangementMidi(savedLoops), sanitizeMidiFilename(filename));
+  downloadMidiFile(createArrangementMidi(savedLoops), createArrangementExportFilename(savedLoops, filename));
 }

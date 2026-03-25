@@ -1,5 +1,6 @@
 import { ControlField } from "./ControlField";
 import { LayerToggleGroup } from "./LayerToggleGroup";
+import { LoopSummary } from "./LoopSummary";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
@@ -10,10 +11,11 @@ import {
   SEQUENCE_STYLE_OPTIONS,
   SEQUENCE_VARIATION_OPTIONS,
 } from "../music/constants";
-import type { LoopSettings, Mood, ScaleType, LayerToggles } from "../music/types";
+import type { GeneratedLoop, LoopSettings, Mood, ScaleType, LayerToggles } from "../music/types";
 
 interface LeftSidebarProps {
   settings: LoopSettings;
+  loop: GeneratedLoop | null;
   keyOptions: readonly string[];
   scaleOptions: readonly ScaleType[];
   moodOptions: readonly Mood[];
@@ -29,10 +31,15 @@ interface LeftSidebarProps {
   onPlay: () => void;
   onStop: () => void;
   onExportMidi: () => void;
+  onExportWav: () => void;
+  isExportingWav: boolean;
+  wavExportStatus: string | null;
+  wavExportError: boolean;
 }
 
 export function LeftSidebar({
   settings,
+  loop,
   keyOptions,
   scaleOptions,
   moodOptions,
@@ -48,6 +55,10 @@ export function LeftSidebar({
   onPlay,
   onStop,
   onExportMidi,
+  onExportWav,
+  isExportingWav,
+  wavExportStatus,
+  wavExportError,
 }: LeftSidebarProps) {
   const iconClassName = "h-4 w-4";
 
@@ -221,6 +232,9 @@ export function LeftSidebar({
             <ControlField label="Active Layers" hint="At least one layer must be enabled">
               <LayerToggleGroup value={settings.layers} onChange={onUpdateLayers} />
             </ControlField>
+            <div className="mt-4">
+              <LoopSummary loop={loop} compact />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -300,7 +314,27 @@ export function LeftSidebar({
               />
               <span className="font-medium">Autoplay</span>
             </label>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onExportWav}
+              disabled={!hasCurrentLoop || isExportingWav}
+              className="shrink-0 gap-2 px-3"
+              title="Export WAV"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClassName} aria-hidden="true">
+                <path d="M12 3v12" />
+                <path d="m7 10 5 5 5-5" />
+                <path d="M5 19h14" />
+              </svg>
+              <span>{isExportingWav ? "Exporting WAV..." : "Export WAV"}</span>
+            </Button>
           </div>
+          {wavExportStatus ? (
+            <p className={`m-0 mt-3 text-sm ${wavExportError ? "text-[hsl(var(--destructive))]" : "text-muted-foreground"}`}>
+              {wavExportStatus}
+            </p>
+          ) : null}
         </CardContent>
       </Card>
     </div>

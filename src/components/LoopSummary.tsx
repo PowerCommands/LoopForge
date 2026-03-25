@@ -2,9 +2,10 @@ import type { GeneratedLoop } from "../music/types";
 
 interface LoopSummaryProps {
   loop: GeneratedLoop | null;
+  compact?: boolean;
 }
 
-export function LoopSummary({ loop }: LoopSummaryProps) {
+export function LoopSummary({ loop, compact = false }: LoopSummaryProps) {
   if (!loop) {
     return (
       <section className="rounded-lg border border-dashed border-border bg-white/50 p-4 dark:bg-[#17152d]">
@@ -22,7 +23,7 @@ export function LoopSummary({ loop }: LoopSummaryProps) {
       <p className="mb-2 text-base font-semibold text-foreground">
         Key / Scale: {loop.settings.key} {loop.settings.scale}
       </p>
-      <ul className="m-0 space-y-2 pl-5 text-sm text-muted-foreground">
+      <ul className={`m-0 text-sm text-muted-foreground ${compact ? "space-y-1.5 pl-5" : "space-y-2 pl-5"}`}>
         <li>Tempo: {loop.settings.tempo} BPM</li>
         <li>
           Chord progression:{" "}

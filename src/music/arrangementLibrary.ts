@@ -5,6 +5,7 @@ import type { SavedLoop } from "./types";
 export interface StoredArrangementLoop {
   id: string;
   name: string;
+  seconds: number;
   loop: SavedLoop["loop"];
 }
 
@@ -33,6 +34,7 @@ export function createStoredArrangement(name: string, url: string, savedLoops: S
     loops: savedLoops.map((savedLoop) => ({
       id: savedLoop.id,
       name: savedLoop.name,
+      seconds: savedLoop.seconds,
       loop: cloneGeneratedLoop(savedLoop.loop),
     })),
   };
@@ -78,6 +80,10 @@ export function loadStoredArrangements(): StoredArrangement[] {
           text2: typeof arrangement.text2 === "string" ? arrangement.text2 : "",
           loops: arrangement.loops.map((loop) => ({
             ...loop,
+            seconds:
+              typeof loop.seconds === "number" && Number.isFinite(loop.seconds) && loop.seconds > 0
+                ? Math.round(loop.seconds)
+                : Math.round((loop.loop.totalBeats * 60) / loop.loop.settings.tempo),
             loop: normalizeGeneratedLoop(loop.loop),
           })),
         },

@@ -1,5 +1,6 @@
 export const APP_STORAGE_KEYS = {
   arrangements: "loop-forge-arrangement-library",
+  studioDraft: "loop-forge-studio-draft",
   volume: "loop-forge-volume",
   theme: "loop-forge-theme",
   dropboxAuth: "loop-forge-sync-dropbox-auth",
@@ -35,6 +36,11 @@ const MANAGED_STORAGE_FILES: ManagedStorageFileDescriptor[] = [
     name: "Arrangement Library",
     description: "Saved arrangements including loops, URLs and lyrics.",
     primary: true,
+  },
+  {
+    key: APP_STORAGE_KEYS.studioDraft,
+    name: "Studio Draft",
+    description: "Current unsaved studio work including loop settings and arrangement draft fields.",
   },
   {
     key: APP_STORAGE_KEYS.volume,
@@ -149,6 +155,17 @@ function getRecordCount(key: string, rawValue: string | null): number {
     try {
       const parsed = JSON.parse(rawValue);
       return Array.isArray(parsed) ? parsed.length : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  if (key === APP_STORAGE_KEYS.studioDraft) {
+    try {
+      const parsed = JSON.parse(rawValue) as { savedLoops?: unknown[]; loop?: unknown };
+      const savedLoopCount = Array.isArray(parsed.savedLoops) ? parsed.savedLoops.length : 0;
+      const currentLoopCount = parsed.loop ? 1 : 0;
+      return savedLoopCount + currentLoopCount;
     } catch {
       return 0;
     }

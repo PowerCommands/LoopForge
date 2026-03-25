@@ -64,5 +64,6 @@ export interface GeneratedLoop {
 export interface SavedLoop {
   id: string;
   name: string;
+  seconds: number;
   loop: GeneratedLoop;
 }

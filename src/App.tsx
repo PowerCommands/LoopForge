@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrangementLibraryView } from "./components/ArrangementLibraryView";
 import { AppShell } from "./components/AppShell";
 import { LeftSidebar } from "./components/LeftSidebar";
@@ -8,7 +8,23 @@ import { RightSidebar } from "./components/RightSidebar";
 import { SettingsWorkspace } from "./components/SettingsWorkspace";
 import { TopBar } from "./components/TopBar";
 import { useTheme } from "./components/ThemeProvider";
-import { createSavedLoop, getDefaultLoopName, moveSavedLoop } from "./music/arrangement";
+import {
+  audioBufferToWavBlob,
+  createArrangementWavFilename,
+  createLoopWavFilename,
+  downloadBlob,
+  renderArrangementToAudioBuffer,
+  renderCurrentLoopToAudioBuffer,
+} from "./audio/exportWav";
+import type { ExportFormat } from "./components/ui/export-dialog";
+import { cloneGeneratedLoop, cloneSavedLoops, createSavedLoop, getDefaultLoopName, moveSavedLoop, normalizeGeneratedLoop, normalizeSavedLoop } from "./music/arrangement";
+import {
+  cloneEditableLoop,
+  createEditableLoopFromGeneratedLoop,
+  createGeneratedLoopFromEditableLoop,
+  editableLoopsEqual,
+  type EditableLoop,
+} from "./music/editor";
 import {
   createStoredArrangement,
   loadStoredArrangements,
@@ -18,9 +34,9 @@ import {
 import { DEFAULT_SEQUENCE_SETTINGS, DEFAULT_SETTINGS, KEY_OPTIONS, normalizeLoopSettings } from "./music/constants";
 import { generateLoop } from "./music/generator";
 import { downloadArrangementMidi, exportLoopToMidi } from "./midi/exportMidi";
-import type { LoopSettings, Mood, SavedLoop, ScaleType } from "./music/types";
+import type { GeneratedLoop, LoopSettings, Mood, SavedLoop, ScaleType } from "./music/types";
 import { APP_STORAGE_KEYS } from "./lib/appStorage";
-import { playbackEngine } from "./playback/transport";
+import { getLoopDurationSeconds, playbackEngine } from "./playback/transport";
 
 const MOOD_OPTIONS: Mood[] = ["Balanced", "Dark", "Bright", "Sparse", "Intense", "Calm"];
 const SCALE_OPTIONS: ScaleType[] = ["Major", "Minor"];
@@ -37,6 +53,26 @@ const SETTINGS_COOKIE_KEYS = {
   variation: "loop-forge-variation",
   style: "loop-forge-style",
 } as const;
+
+interface StudioDraftPayload {
+  settings?: Partial<LoopSettings>;
+  loop?: GeneratedLoop;
+  savedLoop?: GeneratedLoop;
+  savedLoops?: SavedLoop[];
+  arrangementName?: string;
+  arrangementUrl?: string;
+  editingArrangementId?: string | null;
+}
+
+interface StudioDraftState {
+  settings: LoopSettings;
+  editableLoop: EditableLoop;
+  savedEditableLoop: EditableLoop;
+  savedLoops: SavedLoop[];
+  arrangementName: string;
+  arrangementUrl: string;
+  editingArrangementId: string | null;
+}
 
 function getCookieValue(name: string): string | null {
   if (typeof document === "undefined") {
@@ -95,10 +131,100 @@ function getInitialSettings(): LoopSettings {
   });
 }
 
+function isGeneratedLoopDraft(value: unknown): value is GeneratedLoop {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<GeneratedLoop>;
+  return Array.isArray(candidate.chords) && Array.isArray(candidate.melody) && Array.isArray(candidate.bass) && typeof candidate.id === "string";
+}
+
+function isSavedLoopDraft(value: unknown): value is SavedLoop {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<SavedLoop>;
+  return typeof candidate.id === "string" && typeof candidate.name === "string" && isGeneratedLoopDraft(candidate.loop);
+}
+
+function loadStudioDraftState(): StudioDraftState {
+  const fallbackSettings = getInitialSettings();
+  const fallbackLoop = generateLoop(fallbackSettings);
+
+  if (typeof window === "undefined") {
+    return {
+      settings: fallbackSettings,
+      editableLoop: createEditableLoopFromGeneratedLoop(fallbackLoop),
+      savedEditableLoop: createEditableLoopFromGeneratedLoop(fallbackLoop),
+      savedLoops: [],
+      arrangementName: "",
+      arrangementUrl: "",
+      editingArrangementId: null,
+    };
+  }
+
+  const json = window.localStorage.getItem(APP_STORAGE_KEYS.studioDraft);
+
+  if (!json) {
+    return {
+      settings: fallbackSettings,
+      editableLoop: createEditableLoopFromGeneratedLoop(fallbackLoop),
+      savedEditableLoop: createEditableLoopFromGeneratedLoop(fallbackLoop),
+      savedLoops: [],
+      arrangementName: "",
+      arrangementUrl: "",
+      editingArrangementId: null,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(json) as StudioDraftPayload;
+    const loopSettings =
+      parsed.loop && isGeneratedLoopDraft(parsed.loop)
+        ? parsed.loop.settings
+        : parsed.settings;
+    const settings = normalizeLoopSettings(loopSettings ?? fallbackSettings);
+    const loop = parsed.loop && isGeneratedLoopDraft(parsed.loop) ? normalizeGeneratedLoop(parsed.loop) : generateLoop(settings);
+    const savedLoop =
+      parsed.savedLoop && isGeneratedLoopDraft(parsed.savedLoop)
+        ? normalizeGeneratedLoop(parsed.savedLoop)
+        : loop;
+    const savedLoops = Array.isArray(parsed.savedLoops)
+      ? parsed.savedLoops.flatMap((savedLoop) => (isSavedLoopDraft(savedLoop) ? [normalizeSavedLoop(savedLoop)] : []))
+      : [];
+
+    return {
+      settings,
+      editableLoop: createEditableLoopFromGeneratedLoop(loop),
+      savedEditableLoop: createEditableLoopFromGeneratedLoop(savedLoop),
+      savedLoops,
+      arrangementName: typeof parsed.arrangementName === "string" ? parsed.arrangementName : "",
+      arrangementUrl: typeof parsed.arrangementUrl === "string" ? parsed.arrangementUrl : "",
+      editingArrangementId: typeof parsed.editingArrangementId === "string" ? parsed.editingArrangementId : null,
+    };
+  } catch {
+    return {
+      settings: fallbackSettings,
+      editableLoop: createEditableLoopFromGeneratedLoop(fallbackLoop),
+      savedEditableLoop: createEditableLoopFromGeneratedLoop(fallbackLoop),
+      savedLoops: [],
+      arrangementName: "",
+      arrangementUrl: "",
+      editingArrangementId: null,
+    };
+  }
+}
+
 export default function App() {
   const { setTheme } = useTheme();
-  const [settings, setSettings] = useState<LoopSettings>(() => getInitialSettings());
-  const [loop, setLoop] = useState(() => generateLoop(getInitialSettings()));
+  const [initialStudioDraft] = useState<StudioDraftState>(() => loadStudioDraftState());
+  const [settings, setSettings] = useState<LoopSettings>(initialStudioDraft.settings);
+  const [editableLoop, setEditableLoop] = useState<EditableLoop>(initialStudioDraft.editableLoop);
+  const [savedEditableLoop, setSavedEditableLoop] = useState<EditableLoop>(initialStudioDraft.savedEditableLoop);
+  const [undoStack, setUndoStack] = useState<EditableLoop[]>([]);
+  const [redoStack, setRedoStack] = useState<EditableLoop[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeView, setActiveView] = useState<"studio" | "library" | "lyrics" | "settings">("studio");
   const [autoplay, setAutoplay] = useState(() => {
@@ -116,23 +242,22 @@ export default function App() {
     const stored = Number(window.localStorage.getItem(VOLUME_STORAGE_KEY));
     return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : 0.3;
   });
-  const [savedLoops, setSavedLoops] = useState<SavedLoop[]>([]);
-  const [arrangementName, setArrangementName] = useState("");
-  const [arrangementUrl, setArrangementUrl] = useState("");
+  const [savedLoops, setSavedLoops] = useState<SavedLoop[]>(initialStudioDraft.savedLoops);
+  const [arrangementName, setArrangementName] = useState(initialStudioDraft.arrangementName);
+  const [arrangementUrl, setArrangementUrl] = useState(initialStudioDraft.arrangementUrl);
+  const [editingArrangementId, setEditingArrangementId] = useState<string | null>(initialStudioDraft.editingArrangementId);
   const [storedArrangements, setStoredArrangements] = useState<StoredArrangement[]>(() => loadStoredArrangements());
+  const [isExportingWav, setIsExportingWav] = useState(false);
+  const [wavExportStatus, setWavExportStatus] = useState<string | null>(null);
+  const [hasWavExportError, setHasWavExportError] = useState(false);
+  const playbackTimeoutRef = useRef<number | null>(null);
   const currentLoop = useMemo(() => {
-    if (!loop) {
+    if (!editableLoop) {
       return null;
     }
 
-    return {
-      ...loop,
-      settings: {
-        ...loop.settings,
-        tempo: settings.tempo,
-      },
-    };
-  }, [loop, settings.tempo]);
+    return createGeneratedLoopFromEditableLoop(editableLoop, settings.tempo);
+  }, [editableLoop, settings.tempo]);
 
   const canGenerate = useMemo(
     () => settings.layers.chords || settings.layers.melody || settings.layers.bass,
@@ -186,10 +311,91 @@ export default function App() {
   }, [storedArrangements]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const draft: StudioDraftPayload = {
+      settings,
+      loop: currentLoop ? cloneGeneratedLoop(currentLoop) : undefined,
+      savedLoop: cloneGeneratedLoop(createGeneratedLoopFromEditableLoop(savedEditableLoop, settings.tempo)),
+      savedLoops: cloneSavedLoops(savedLoops),
+      arrangementName,
+      arrangementUrl,
+      editingArrangementId,
+    };
+
+    window.localStorage.setItem(APP_STORAGE_KEYS.studioDraft, JSON.stringify(draft));
+  }, [arrangementName, arrangementUrl, currentLoop, editingArrangementId, savedEditableLoop, savedLoops, settings]);
+
+  const clearPlaybackTimeout = () => {
+    if (typeof window === "undefined" || playbackTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(playbackTimeoutRef.current);
+    playbackTimeoutRef.current = null;
+  };
+
+  const startOneShotPlayback = async (loopToPlay: GeneratedLoop) => {
+    clearPlaybackTimeout();
+    await playbackEngine.playLoopOnce(loopToPlay);
+    setIsPlaying(true);
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    playbackTimeoutRef.current = window.setTimeout(() => {
+      playbackTimeoutRef.current = null;
+      setIsPlaying(false);
+    }, Math.ceil(getLoopDurationSeconds(loopToPlay) * 1000) + 120);
+  };
+
+  useEffect(() => {
     return () => {
+      clearPlaybackTimeout();
       playbackEngine.dispose();
     };
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      if (event.code !== "Space") {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (isPlaying) {
+        clearPlaybackTimeout();
+        playbackEngine.stop();
+        setIsPlaying(false);
+        return;
+      }
+
+      if (activeView !== "studio" || !currentLoop) {
+        return;
+      }
+
+      await playbackEngine.play(currentLoop);
+      setIsPlaying(true);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeView, currentLoop, isPlaying]);
 
   const updateSettings = <K extends keyof LoopSettings>(key: K, value: LoopSettings[K]) => {
     setSettings((current) => ({
@@ -198,10 +404,27 @@ export default function App() {
     }));
   };
 
+  const applyEditableLoopChange = (nextLoop: EditableLoop) => {
+    setEditableLoop((current) => {
+      if (editableLoopsEqual(current, nextLoop)) {
+        return current;
+      }
+
+      setUndoStack((currentUndo) => [...currentUndo, cloneEditableLoop(current)]);
+      setRedoStack([]);
+      return cloneEditableLoop(nextLoop);
+    });
+  };
+
   const handleGenerate = async () => {
     const nextLoop = generateLoop(settings);
+    const nextEditableLoop = createEditableLoopFromGeneratedLoop(nextLoop);
+    clearPlaybackTimeout();
     playbackEngine.stop();
-    setLoop(nextLoop);
+    setEditableLoop(nextEditableLoop);
+    setSavedEditableLoop(cloneEditableLoop(nextEditableLoop));
+    setUndoStack([]);
+    setRedoStack([]);
     setIsPlaying(false);
 
     if (autoplay) {
@@ -215,11 +438,13 @@ export default function App() {
       return;
     }
 
+    clearPlaybackTimeout();
     await playbackEngine.play(currentLoop);
     setIsPlaying(true);
   };
 
   const handleStop = () => {
+    clearPlaybackTimeout();
     playbackEngine.stop();
     setIsPlaying(false);
   };
@@ -229,8 +454,17 @@ export default function App() {
       return;
     }
 
+    clearPlaybackTimeout();
     setIsPlaying(false);
     await playbackEngine.playArrangement(savedLoops);
+  };
+
+  const handlePreviewSavedLoop = async (savedLoop: SavedLoop) => {
+    await startOneShotPlayback(savedLoop.loop);
+  };
+
+  const handlePreviewLibraryLoop = async (storedLoop: StoredArrangement["loops"][number]) => {
+    await startOneShotPlayback(storedLoop.loop);
   };
 
   const handleExport = () => {
@@ -239,6 +473,30 @@ export default function App() {
     }
 
     exportLoopToMidi(currentLoop);
+  };
+
+  const handleExportWav = async () => {
+    if (!currentLoop || isExportingWav) {
+      return;
+    }
+
+    setIsExportingWav(true);
+    setHasWavExportError(false);
+    setWavExportStatus("Exporting WAV...");
+
+    try {
+      const renderedBuffer = await renderCurrentLoopToAudioBuffer(currentLoop, volume);
+      const wavBlob = audioBufferToWavBlob(renderedBuffer);
+
+      downloadBlob(wavBlob, createLoopWavFilename(currentLoop));
+      setWavExportStatus("WAV exported successfully.");
+    } catch (error) {
+      console.error(error);
+      setHasWavExportError(true);
+      setWavExportStatus("WAV export failed. Please try again.");
+    } finally {
+      setIsExportingWav(false);
+    }
   };
 
   const handleSaveLoop = () => {
@@ -287,9 +545,31 @@ export default function App() {
       return;
     }
 
-    const arrangement = createStoredArrangement(arrangementName.trim(), arrangementUrl.trim(), savedLoops);
+    if (editingArrangementId) {
+      setStoredArrangements((current) =>
+        current.map((arrangement) =>
+          arrangement.id === editingArrangementId
+            ? {
+                ...arrangement,
+                name: arrangementName.trim(),
+                url: arrangementUrl.trim(),
+                tempo: savedLoops[0]?.loop.settings.tempo ?? arrangement.tempo,
+                loops: savedLoops.map((savedLoop) => ({
+                  id: savedLoop.id,
+                  name: savedLoop.name,
+                  seconds: savedLoop.seconds,
+                  loop: cloneGeneratedLoop(savedLoop.loop),
+                })),
+              }
+            : arrangement,
+        ),
+      );
+    } else {
+      const arrangement = createStoredArrangement(arrangementName.trim(), arrangementUrl.trim(), savedLoops);
+      setStoredArrangements((current) => [arrangement, ...current]);
+    }
 
-    setStoredArrangements((current) => [arrangement, ...current]);
+    setEditingArrangementId(null);
     setArrangementName("");
     setArrangementUrl("");
     setActiveView("library");
@@ -311,6 +591,16 @@ export default function App() {
 
   const handleStorageChanged = () => {
     setStoredArrangements(loadStoredArrangements());
+    const studioDraft = loadStudioDraftState();
+    setSettings(studioDraft.settings);
+    setEditableLoop(studioDraft.editableLoop);
+    setSavedEditableLoop(studioDraft.savedEditableLoop);
+    setUndoStack([]);
+    setRedoStack([]);
+    setSavedLoops(studioDraft.savedLoops);
+    setArrangementName(studioDraft.arrangementName);
+    setArrangementUrl(studioDraft.arrangementUrl);
+    setEditingArrangementId(typeof studioDraft.editingArrangementId === "string" ? studioDraft.editingArrangementId : null);
 
     if (typeof window !== "undefined") {
       const storedVolume = Number(window.localStorage.getItem(APP_STORAGE_KEYS.volume));
@@ -321,14 +611,97 @@ export default function App() {
     }
   };
 
-  const handleDownloadArrangementMidi = (arrangement: StoredArrangement) => {
+  const handleExportArrangement = async (arrangement: StoredArrangement, format: ExportFormat) => {
     const loops: SavedLoop[] = arrangement.loops.map((loop) => ({
       id: loop.id,
       name: loop.name,
+      seconds: loop.seconds,
       loop: loop.loop,
     }));
 
-    downloadArrangementMidi(loops, arrangement.name);
+    if (format === "midi") {
+      downloadArrangementMidi(loops, arrangement.name);
+      return;
+    }
+
+    const renderedBuffer = await renderArrangementToAudioBuffer(loops, volume);
+    const wavBlob = audioBufferToWavBlob(renderedBuffer);
+
+    downloadBlob(wavBlob, createArrangementWavFilename(arrangement.name, loops));
+  };
+
+  const handleEditArrangement = (arrangement: StoredArrangement) => {
+    setSavedLoops(
+      arrangement.loops.map((loop) => ({
+        id: loop.id,
+        name: loop.name,
+        seconds: loop.seconds,
+        loop: cloneGeneratedLoop(loop.loop),
+      })),
+    );
+    setArrangementName(arrangement.name);
+    setArrangementUrl(arrangement.url);
+    setEditingArrangementId(arrangement.id);
+    setActiveView("studio");
+  };
+
+  const handleCurrentLoopUndo = () => {
+    setUndoStack((currentUndo) => {
+      const previous = currentUndo[currentUndo.length - 1];
+
+      if (!previous) {
+        return currentUndo;
+      }
+
+      setRedoStack((currentRedo) => [cloneEditableLoop(editableLoop), ...currentRedo]);
+      setEditableLoop(cloneEditableLoop(previous));
+      return currentUndo.slice(0, -1);
+    });
+  };
+
+  const handleCurrentLoopRedo = () => {
+    setRedoStack((currentRedo) => {
+      const [next, ...rest] = currentRedo;
+
+      if (!next) {
+        return currentRedo;
+      }
+
+      setUndoStack((currentUndo) => [...currentUndo, cloneEditableLoop(editableLoop)]);
+      setEditableLoop(cloneEditableLoop(next));
+      return rest;
+    });
+  };
+
+  const handleCurrentLoopReset = () => {
+    if (editableLoopsEqual(editableLoop, savedEditableLoop)) {
+      return;
+    }
+
+    setEditableLoop(cloneEditableLoop(savedEditableLoop));
+    setUndoStack([]);
+    setRedoStack([]);
+  };
+
+  const handleCurrentLoopSave = () => {
+    setSavedEditableLoop(cloneEditableLoop(editableLoop));
+    setUndoStack([]);
+    setRedoStack([]);
+  };
+
+  const handleCurrentLoopChange = (nextLoop: EditableLoop) => {
+    applyEditableLoopChange(nextLoop);
+  };
+
+  const handleDeleteArrangement = (arrangement: StoredArrangement) => {
+    setStoredArrangements((current) => current.filter((item) => item.id !== arrangement.id));
+
+    if (editingArrangementId === arrangement.id) {
+      setEditingArrangementId(null);
+      setArrangementName("");
+      setArrangementUrl("");
+      setSavedLoops([]);
+    }
   };
 
   return (
@@ -344,7 +717,13 @@ export default function App() {
       }
       content={
         activeView === "library" ? (
-          <ArrangementLibraryView arrangements={storedArrangements} onDownloadMidi={handleDownloadArrangementMidi} />
+          <ArrangementLibraryView
+            arrangements={storedArrangements}
+            onExportArrangement={handleExportArrangement}
+            onPlayLoop={handlePreviewLibraryLoop}
+            onEdit={handleEditArrangement}
+            onDelete={handleDeleteArrangement}
+          />
         ) : activeView === "lyrics" ? (
           <LyricsWorkspace arrangements={storedArrangements} onArrangementLyricsChange={handleArrangementLyricsChange} />
         ) : activeView === "settings" ? (
@@ -355,6 +734,7 @@ export default function App() {
         activeView === "studio" ? (
           <LeftSidebar
             settings={settings}
+            loop={currentLoop}
             keyOptions={KEY_OPTIONS}
             scaleOptions={SCALE_OPTIONS}
             moodOptions={MOOD_OPTIONS}
@@ -370,20 +750,41 @@ export default function App() {
             onPlay={handlePlay}
             onStop={handleStop}
             onExportMidi={handleExport}
+            onExportWav={handleExportWav}
+            isExportingWav={isExportingWav}
+            wavExportStatus={wavExportStatus}
+            wavExportError={hasWavExportError}
           />
         ) : null
       }
-      mainWorkspace={activeView === "studio" ? <MainWorkspace loop={currentLoop} /> : null}
+      mainWorkspace={
+        activeView === "studio" ? (
+          <MainWorkspace
+            loop={currentLoop}
+            editableLoop={editableLoop}
+            onLoopChange={handleCurrentLoopChange}
+            onUndo={handleCurrentLoopUndo}
+            onRedo={handleCurrentLoopRedo}
+            onReset={handleCurrentLoopReset}
+            onSave={handleCurrentLoopSave}
+            canUndo={undoStack.length > 0}
+            canRedo={redoStack.length > 0}
+            hasUnsavedChanges={!editableLoopsEqual(editableLoop, savedEditableLoop)}
+          />
+        ) : null
+      }
       rightSidebar={
         activeView === "studio" ? (
           <RightSidebar
             savedLoops={savedLoops}
             arrangementName={arrangementName}
             arrangementUrl={arrangementUrl}
+            isEditingArrangement={editingArrangementId !== null}
             onRename={handleRenameSavedLoop}
             onMoveUp={(id) => handleMoveSavedLoop(id, -1)}
             onMoveDown={(id) => handleMoveSavedLoop(id, 1)}
             onRemove={handleRemoveSavedLoop}
+            onPlayLoop={handlePreviewSavedLoop}
             onArrangementNameChange={setArrangementName}
             onArrangementUrlChange={setArrangementUrl}
             onPlayArrangement={handlePlayArrangement}

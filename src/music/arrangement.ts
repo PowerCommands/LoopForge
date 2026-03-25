@@ -5,6 +5,14 @@ export function getDefaultLoopName(savedLoops: SavedLoop[]): string {
   return `Loop ${savedLoops.length + 1}`;
 }
 
+export function getLoopSeconds(loop: GeneratedLoop): number {
+  return Math.round((loop.totalBeats * 60) / loop.settings.tempo);
+}
+
+export function getArrangementSeconds(savedLoops: SavedLoop[]): number {
+  return savedLoops.reduce((total, savedLoop) => total + savedLoop.seconds, 0);
+}
+
 export function normalizeGeneratedLoop(loop: GeneratedLoop): GeneratedLoop {
   return {
     ...loop,
@@ -26,8 +34,25 @@ export function createSavedLoop(loop: GeneratedLoop, name: string): SavedLoop {
   return {
     id: `${loop.id}-saved-${Date.now()}`,
     name,
+    seconds: getLoopSeconds(loop),
     loop: cloneGeneratedLoop(loop),
   };
+}
+
+export function normalizeSavedLoop(savedLoop: SavedLoop): SavedLoop {
+  return {
+    id: savedLoop.id,
+    name: savedLoop.name,
+    seconds:
+      typeof savedLoop.seconds === "number" && Number.isFinite(savedLoop.seconds) && savedLoop.seconds > 0
+        ? Math.round(savedLoop.seconds)
+        : getLoopSeconds(savedLoop.loop),
+    loop: normalizeGeneratedLoop(savedLoop.loop),
+  };
+}
+
+export function cloneSavedLoops(savedLoops: SavedLoop[]): SavedLoop[] {
+  return savedLoops.map((savedLoop) => normalizeSavedLoop(savedLoop));
 }
 
 export function moveSavedLoop(savedLoops: SavedLoop[], index: number, direction: -1 | 1): SavedLoop[] {

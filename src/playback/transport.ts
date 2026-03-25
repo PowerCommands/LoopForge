@@ -5,6 +5,14 @@ import type { ChordEvent } from "../music/types";
 type ScheduledChordEvent = Omit<ChordEvent, "time"> & { time: string };
 type ScheduledNoteEvent = Omit<TimedNote, "time"> & { time: string };
 
+export interface LoopPlaybackInstrumentRack {
+  output: Tone.Volume;
+  chordSynth: Tone.PolySynth;
+  melodySynth: Tone.Synth;
+  bassSynth: Tone.MonoSynth;
+  dispose: () => void;
+}
+
 function beatToTransportTime(beats: number): string {
   const bars = Math.floor(beats / 4);
   const beatsInBar = beats % 4;
@@ -25,25 +33,116 @@ function noteDurationToTransportTime(beats: number): string {
   return `0:${quarters}:${sixteenths}`;
 }
 
-class LoopPlaybackEngine {
-  private output = new Tone.Volume(0).toDestination();
+function normalizeVolume(volume: number): number {
+  return Math.min(1, Math.max(0, volume));
+}
 
-  private chordSynth = new Tone.PolySynth(Tone.Synth, {
+export function getLoopDurationSeconds(loop: GeneratedLoop): number {
+  return (loop.totalBeats * 60) / loop.settings.tempo;
+}
+
+export function setRackVolume(output: Tone.Volume, volume: number): void {
+  const normalizedVolume = normalizeVolume(volume);
+  output.volume.value = Tone.gainToDb(normalizedVolume <= 0.001 ? 0.001 : normalizedVolume);
+}
+
+export function createLoopPlaybackInstrumentRack(): LoopPlaybackInstrumentRack {
+  const output = new Tone.Volume(0).toDestination();
+  const chordSynth = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: "triangle" },
     envelope: { attack: 0.02, release: 0.8 },
-  }).connect(this.output);
-
-  private melodySynth = new Tone.Synth({
+  }).connect(output);
+  const melodySynth = new Tone.Synth({
     oscillator: { type: "sine" },
     envelope: { attack: 0.01, decay: 0.15, sustain: 0.25, release: 0.3 },
-  }).connect(this.output);
-
-  private bassSynth = new Tone.MonoSynth({
+  }).connect(output);
+  const bassSynth = new Tone.MonoSynth({
     oscillator: { type: "square" },
     filter: { Q: 2, type: "lowpass", rolloff: -24 },
     envelope: { attack: 0.02, decay: 0.2, sustain: 0.6, release: 0.4 },
     filterEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.4, release: 0.8, baseFrequency: 120, octaves: 2 },
-  }).connect(this.output);
+  }).connect(output);
+
+  return {
+    output,
+    chordSynth,
+    melodySynth,
+    bassSynth,
+    dispose: () => {
+      chordSynth.dispose();
+      melodySynth.dispose();
+      bassSynth.dispose();
+      output.dispose();
+    },
+  };
+}
+
+export function createLoopParts(
+  loop: GeneratedLoop,
+  rack: Pick<LoopPlaybackInstrumentRack, "chordSynth" | "melodySynth" | "bassSynth">,
+  startBeat = 0,
+): Tone.Part[] {
+  const parts: Tone.Part[] = [];
+
+  if (loop.chords.length > 0) {
+    const chordEvents: ScheduledChordEvent[] = loop.chords.map((chord) => ({
+      ...chord,
+      time: beatToTransportTime(chord.time + startBeat),
+    }));
+
+    parts.push(
+      new Tone.Part<ScheduledChordEvent>((time, chord) => {
+        rack.chordSynth.triggerAttackRelease(
+          chord.notes,
+          noteDurationToTransportTime(chord.duration),
+          time,
+          0.55,
+        );
+      }, chordEvents),
+    );
+  }
+
+  if (loop.melody.length > 0) {
+    const melodyEvents: ScheduledNoteEvent[] = loop.melody.map((note) => ({
+      ...note,
+      time: beatToTransportTime(note.time + startBeat),
+    }));
+
+    parts.push(
+      new Tone.Part<ScheduledNoteEvent>((time, note) => {
+        rack.melodySynth.triggerAttackRelease(
+          note.note,
+          noteDurationToTransportTime(note.duration),
+          time,
+          note.velocity,
+        );
+      }, melodyEvents),
+    );
+  }
+
+  if (loop.bass.length > 0) {
+    const bassEvents: ScheduledNoteEvent[] = loop.bass.map((note) => ({
+      ...note,
+      time: beatToTransportTime(note.time + startBeat),
+    }));
+
+    parts.push(
+      new Tone.Part<ScheduledNoteEvent>((time, note) => {
+        rack.bassSynth.triggerAttackRelease(
+          note.note,
+          noteDurationToTransportTime(note.duration),
+          time,
+          note.velocity,
+        );
+      }, bassEvents),
+    );
+  }
+
+  return parts;
+}
+
+class LoopPlaybackEngine {
+  private rack = createLoopPlaybackInstrumentRack();
 
   private parts: Tone.Part[] = [];
   private scheduledEventIds: number[] = [];
@@ -56,6 +155,22 @@ class LoopPlaybackEngine {
     Tone.Transport.loopEnd = `${loop.settings.length}m`;
     this.parts = this.createParts(loop);
     this.parts.forEach((part) => part.start(0));
+    Tone.Transport.start();
+  }
+
+  async playLoopOnce(loop: GeneratedLoop): Promise<void> {
+    await Tone.start();
+    this.stop();
+    this.setTempo(loop.settings.tempo);
+    Tone.Transport.loop = false;
+    this.parts = this.createParts(loop);
+    this.parts.forEach((part) => part.start(0));
+
+    const stopId = Tone.Transport.scheduleOnce(() => {
+      this.stop();
+    }, beatToTransportTime(loop.totalBeats));
+
+    this.scheduledEventIds.push(stopId);
     Tone.Transport.start();
   }
 
@@ -101,8 +216,7 @@ class LoopPlaybackEngine {
   }
 
   setVolume(volume: number): void {
-    const normalizedVolume = Math.min(1, Math.max(0, volume));
-    this.output.volume.value = Tone.gainToDb(normalizedVolume <= 0.001 ? 0.001 : normalizedVolume);
+    setRackVolume(this.rack.output, volume);
   }
 
   stop(): void {
@@ -116,70 +230,11 @@ class LoopPlaybackEngine {
 
   dispose(): void {
     this.stop();
-    this.chordSynth.dispose();
-    this.melodySynth.dispose();
-    this.bassSynth.dispose();
-    this.output.dispose();
+    this.rack.dispose();
   }
 
   private createParts(loop: GeneratedLoop, startBeat = 0): Tone.Part[] {
-    const parts: Tone.Part[] = [];
-
-    if (loop.chords.length > 0) {
-      const chordEvents: ScheduledChordEvent[] = loop.chords.map((chord) => ({
-        ...chord,
-        time: beatToTransportTime(chord.time + startBeat),
-      }));
-
-      parts.push(
-        new Tone.Part<ScheduledChordEvent>((time, chord) => {
-          this.chordSynth.triggerAttackRelease(
-            chord.notes,
-            noteDurationToTransportTime(chord.duration),
-            time,
-            0.55,
-          );
-        }, chordEvents),
-      );
-    }
-
-    if (loop.melody.length > 0) {
-      const melodyEvents: ScheduledNoteEvent[] = loop.melody.map((note) => ({
-        ...note,
-        time: beatToTransportTime(note.time + startBeat),
-      }));
-
-      parts.push(
-        new Tone.Part<ScheduledNoteEvent>((time, note) => {
-          this.melodySynth.triggerAttackRelease(
-            note.note,
-            noteDurationToTransportTime(note.duration),
-            time,
-            note.velocity,
-          );
-        }, melodyEvents),
-      );
-    }
-
-    if (loop.bass.length > 0) {
-      const bassEvents: ScheduledNoteEvent[] = loop.bass.map((note) => ({
-        ...note,
-        time: beatToTransportTime(note.time + startBeat),
-      }));
-
-      parts.push(
-        new Tone.Part<ScheduledNoteEvent>((time, note) => {
-          this.bassSynth.triggerAttackRelease(
-            note.note,
-            noteDurationToTransportTime(note.duration),
-            time,
-            note.velocity,
-          );
-        }, bassEvents),
-      );
-    }
-
-    return parts;
+    return createLoopParts(loop, this.rack, startBeat);
   }
 }
 

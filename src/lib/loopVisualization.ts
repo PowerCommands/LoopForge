@@ -1,5 +1,7 @@
 import { Note } from "tonal";
-import type { GeneratedLoop, LayerName } from "../music/types";
+import type { LayerName } from "../music/types";
+import type { EditableLoop, EditableLoopNote } from "../music/editor";
+import { PIANO_ROLL_STEPS_PER_BEAT } from "../music/editor";
 
 export type VisualizationLayer = LayerName;
 
@@ -9,6 +11,8 @@ export interface VisualizedNote {
   pitchName: string;
   startBeat: number;
   durationBeats: number;
+  startStep: number;
+  durationSteps: number;
   layer: VisualizationLayer;
 }
 
@@ -18,71 +22,36 @@ export interface LoopVisualizationModel {
   minPitch: number;
   maxPitch: number;
   totalBeats: number;
+  totalSteps: number;
 }
 
 const PITCH_PADDING = 2;
 const MIN_VISIBLE_PITCH = 36;
 const MAX_VISIBLE_PITCH = 84;
 
-export function mapLoopToVisualization(loop: GeneratedLoop | null): LoopVisualizationModel | null {
-  if (!loop) {
+function clampPitch(pitch: number) {
+  return Math.min(MAX_VISIBLE_PITCH, Math.max(MIN_VISIBLE_PITCH, pitch));
+}
+
+function mapEditableNote(note: EditableLoopNote): VisualizedNote {
+  return {
+    id: note.id,
+    pitch: note.pitch,
+    pitchName: Note.fromMidi(note.pitch) ?? `${note.pitch}`,
+    startBeat: note.startStep / PIANO_ROLL_STEPS_PER_BEAT,
+    durationBeats: note.durationSteps / PIANO_ROLL_STEPS_PER_BEAT,
+    startStep: note.startStep,
+    durationSteps: note.durationSteps,
+    layer: note.layer,
+  };
+}
+
+export function mapLoopToVisualization(editableLoop: EditableLoop | null): LoopVisualizationModel | null {
+  if (!editableLoop) {
     return null;
   }
 
-  const chordNotes = loop.chords.flatMap((chord, chordIndex) =>
-    chord.notes.flatMap((noteName, noteIndex) => {
-      const pitch = Note.midi(noteName);
-
-      if (pitch === null) {
-        return [];
-      }
-
-      return {
-        id: `chord-${chordIndex}-${noteIndex}`,
-        pitch,
-        pitchName: noteName,
-        startBeat: chord.time,
-        durationBeats: chord.duration,
-        layer: "chords" as const,
-      };
-    }),
-  );
-
-  const melodyNotes = loop.melody.flatMap((note, index) => {
-    const pitch = Note.midi(note.note);
-
-    if (pitch === null) {
-      return [];
-    }
-
-    return {
-      id: `melody-${index}`,
-      pitch,
-      pitchName: note.note,
-      startBeat: note.time,
-      durationBeats: note.duration,
-      layer: "melody" as const,
-    };
-  });
-
-  const bassNotes = loop.bass.flatMap((note, index) => {
-    const pitch = Note.midi(note.note);
-
-    if (pitch === null) {
-      return [];
-    }
-
-    return {
-      id: `bass-${index}`,
-      pitch,
-      pitchName: note.note,
-      startBeat: note.time,
-      durationBeats: note.duration,
-      layer: "bass" as const,
-    };
-  });
-
-  const notes = [...chordNotes, ...melodyNotes, ...bassNotes];
+  const notes = editableLoop.notes.map(mapEditableNote);
   const activeLayers = (["chords", "melody", "bass"] as const).filter((layer) =>
     notes.some((note) => note.layer === layer),
   );
@@ -93,7 +62,8 @@ export function mapLoopToVisualization(loop: GeneratedLoop | null): LoopVisualiz
       activeLayers: [],
       minPitch: 48,
       maxPitch: 72,
-      totalBeats: loop.totalBeats,
+      totalBeats: editableLoop.totalBeats,
+      totalSteps: editableLoop.totalSteps,
     };
   }
 
@@ -106,10 +76,7 @@ export function mapLoopToVisualization(loop: GeneratedLoop | null): LoopVisualiz
     activeLayers,
     minPitch: Math.min(minPitch, maxPitch),
     maxPitch: Math.max(minPitch, maxPitch),
-    totalBeats: loop.totalBeats,
+    totalBeats: editableLoop.totalBeats,
+    totalSteps: editableLoop.totalSteps,
   };
-}
-
-function clampPitch(pitch: number) {
-  return Math.min(MAX_VISIBLE_PITCH, Math.max(MIN_VISIBLE_PITCH, pitch));
 }

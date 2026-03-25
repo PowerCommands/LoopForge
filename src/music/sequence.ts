@@ -179,8 +179,14 @@ function getHoldChance(layer: SequenceLayer, style: SequenceStyle): number {
   switch (style) {
     case "flowing":
       return clampProbability(baseChance + 0.22);
+    case "legato":
+      return clampProbability(baseChance + 0.3);
     case "arp-like":
       return clampProbability(baseChance + 0.04);
+    case "staccato":
+      return clampProbability(baseChance - 0.12);
+    case "pulsing":
+      return clampProbability(baseChance - 0.04);
     case "syncopated":
       return clampProbability(baseChance - 0.08);
     case "straight":
@@ -195,6 +201,7 @@ function getStyleBias(style: SequenceStyle, patternLength: SequencePatternLength
   const isDownbeat = stepInBeat === 0;
   const isSubdivisionAccent = stepsPerBeat === 4 && stepInBeat === 2;
   const isOffbeat = !isDownbeat;
+  const isEighthPulse = stepInBeat === 0 || (stepsPerBeat >= 2 && stepInBeat === Math.floor(stepsPerBeat / 2));
 
   switch (style) {
     case "syncopated":
@@ -213,6 +220,24 @@ function getStyleBias(style: SequenceStyle, patternLength: SequencePatternLength
       }
 
       return 0.02;
+    case "staccato":
+      if (stepIndex === 0) {
+        return 0.26;
+      }
+
+      return isDownbeat ? 0.06 : -0.12;
+    case "legato":
+      if (stepIndex === 0) {
+        return 0.28;
+      }
+
+      return isDownbeat || isSubdivisionAccent ? 0.08 : 0.02;
+    case "pulsing":
+      if (stepIndex === 0) {
+        return 0.28;
+      }
+
+      return isEighthPulse ? 0.16 : -0.06;
     case "arp-like":
       if (isDownbeat || isSubdivisionAccent) {
         return 0.12;

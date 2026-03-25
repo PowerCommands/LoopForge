@@ -17,7 +17,7 @@ import {
   renderCurrentLoopToAudioBuffer,
 } from "./audio/exportWav";
 import type { ExportFormat } from "./components/ui/export-dialog";
-import { cloneGeneratedLoop, cloneSavedLoops, createSavedLoop, getDefaultLoopName, moveSavedLoop, normalizeGeneratedLoop, normalizeSavedLoop } from "./music/arrangement";
+import { cloneGeneratedLoop, cloneSavedLoops, createSavedLoop, getDefaultLoopName, normalizeGeneratedLoop, normalizeSavedLoop } from "./music/arrangement";
 import {
   cloneEditableLoop,
   createEditableLoopFromGeneratedLoop,
@@ -52,6 +52,8 @@ const SETTINGS_COOKIE_KEYS = {
   density: "loop-forge-density",
   variation: "loop-forge-variation",
   style: "loop-forge-style",
+  groove: "loop-forge-groove",
+  register: "loop-forge-register",
 } as const;
 
 interface StudioDraftPayload {
@@ -108,6 +110,8 @@ function getInitialSettings(): LoopSettings {
   const density = getCookieValue(SETTINGS_COOKIE_KEYS.density);
   const variation = getCookieValue(SETTINGS_COOKIE_KEYS.variation);
   const style = getCookieValue(SETTINGS_COOKIE_KEYS.style);
+  const groove = getCookieValue(SETTINGS_COOKIE_KEYS.groove);
+  const register = getCookieValue(SETTINGS_COOKIE_KEYS.register);
 
   return normalizeLoopSettings({
     key: key && (KEY_OPTIONS as readonly string[]).includes(key) ? key : DEFAULT_SETTINGS.key,
@@ -124,9 +128,14 @@ function getInitialSettings(): LoopSettings {
           ? variation
           : DEFAULT_SEQUENCE_SETTINGS.variation,
       style:
-        style === "straight" || style === "syncopated" || style === "flowing" || style === "arp-like"
+        style === "straight" || style === "syncopated" || style === "flowing" || style === "arp-like" || style === "staccato" || style === "legato" || style === "pulsing"
           ? style
           : DEFAULT_SEQUENCE_SETTINGS.style,
+      groove: groove === "straight" || groove === "swing" || groove === "triplet" ? groove : DEFAULT_SEQUENCE_SETTINGS.groove,
+      register:
+        register === "low" || register === "mid" || register === "high" || register === "wide"
+          ? register
+          : DEFAULT_SEQUENCE_SETTINGS.register,
     },
   });
 }
@@ -294,6 +303,8 @@ export default function App() {
     setCookieValue(SETTINGS_COOKIE_KEYS.density, settings.sequence.density);
     setCookieValue(SETTINGS_COOKIE_KEYS.variation, settings.sequence.variation);
     setCookieValue(SETTINGS_COOKIE_KEYS.style, settings.sequence.style);
+    setCookieValue(SETTINGS_COOKIE_KEYS.groove, settings.sequence.groove);
+    setCookieValue(SETTINGS_COOKIE_KEYS.register, settings.sequence.register);
   }, [
     settings.key,
     settings.scale,
@@ -304,6 +315,8 @@ export default function App() {
     settings.sequence.density,
     settings.sequence.variation,
     settings.sequence.style,
+    settings.sequence.groove,
+    settings.sequence.register,
   ]);
 
   useEffect(() => {
@@ -524,20 +537,28 @@ export default function App() {
     );
   };
 
-  const handleMoveSavedLoop = (id: string, direction: -1 | 1) => {
+  const handleReorderSavedLoops = (sourceId: string, targetId: string) => {
     setSavedLoops((current) => {
-      const index = current.findIndex((savedLoop) => savedLoop.id === id);
+      const sourceIndex = current.findIndex((savedLoop) => savedLoop.id === sourceId);
+      const targetIndex = current.findIndex((savedLoop) => savedLoop.id === targetId);
 
-      if (index === -1) {
+      if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
         return current;
       }
 
-      return moveSavedLoop(current, index, direction);
+      const next = [...current];
+      const [movedLoop] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, movedLoop);
+      return next;
     });
   };
 
   const handleRemoveSavedLoop = (id: string) => {
     setSavedLoops((current) => current.filter((savedLoop) => savedLoop.id !== id));
+  };
+
+  const handleClearSavedLoops = () => {
+    setSavedLoops([]);
   };
 
   const handleSaveArrangement = () => {
@@ -781,9 +802,9 @@ export default function App() {
             arrangementUrl={arrangementUrl}
             isEditingArrangement={editingArrangementId !== null}
             onRename={handleRenameSavedLoop}
-            onMoveUp={(id) => handleMoveSavedLoop(id, -1)}
-            onMoveDown={(id) => handleMoveSavedLoop(id, 1)}
+            onReorder={handleReorderSavedLoops}
             onRemove={handleRemoveSavedLoop}
+            onClearAll={handleClearSavedLoops}
             onPlayLoop={handlePreviewSavedLoop}
             onArrangementNameChange={setArrangementName}
             onArrangementUrlChange={setArrangementUrl}

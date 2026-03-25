@@ -1,7 +1,9 @@
 import type {
   LoopSettings,
   SequenceDensity,
+  SequenceGroove,
   SequencePatternLength,
+  SequenceRegister,
   SequenceSettings,
   SequenceStyle,
   SequenceVariation,
@@ -25,13 +27,17 @@ export const KEY_OPTIONS = [
 export const SEQUENCE_PATTERN_LENGTH_OPTIONS: SequencePatternLength[] = [8, 16];
 export const SEQUENCE_DENSITY_OPTIONS: SequenceDensity[] = ["low", "medium", "high"];
 export const SEQUENCE_VARIATION_OPTIONS: SequenceVariation[] = ["low", "medium", "high"];
-export const SEQUENCE_STYLE_OPTIONS: SequenceStyle[] = ["straight", "syncopated", "flowing", "arp-like"];
+export const SEQUENCE_STYLE_OPTIONS: SequenceStyle[] = ["straight", "syncopated", "flowing", "arp-like", "staccato", "legato", "pulsing"];
+export const SEQUENCE_GROOVE_OPTIONS: SequenceGroove[] = ["straight", "swing", "triplet"];
+export const SEQUENCE_REGISTER_OPTIONS: SequenceRegister[] = ["low", "mid", "high", "wide"];
 
 export const DEFAULT_SEQUENCE_SETTINGS: SequenceSettings = {
   patternLength: 16,
   density: "medium",
   variation: "medium",
   style: "straight",
+  groove: "straight",
+  register: "mid",
 };
 
 export const DEFAULT_SETTINGS: LoopSettings = {
@@ -62,6 +68,12 @@ export function normalizeSequenceSettings(sequence?: Partial<SequenceSettings> |
     style: sequence?.style && SEQUENCE_STYLE_OPTIONS.includes(sequence.style)
       ? sequence.style
       : DEFAULT_SEQUENCE_SETTINGS.style,
+    groove: sequence?.groove && SEQUENCE_GROOVE_OPTIONS.includes(sequence.groove)
+      ? sequence.groove
+      : DEFAULT_SEQUENCE_SETTINGS.groove,
+    register: sequence?.register && SEQUENCE_REGISTER_OPTIONS.includes(sequence.register)
+      ? sequence.register
+      : DEFAULT_SEQUENCE_SETTINGS.register,
   };
 }
 

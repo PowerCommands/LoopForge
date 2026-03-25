@@ -42,3 +42,9 @@ Then open `http://localhost:8080`.
 The Docker image uses a multi-stage build:
 - `node:20-alpine` builds the Vite app
 - `nginx:1.27-alpine` serves the generated static files
+
+## Publish Docker container with Dockube 
+
+```bash
+build https://github.com/PowerCommands/LoopForge.git "loop-forge" --publish --platform=linux/amd64
+```

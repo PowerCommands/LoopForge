@@ -7,7 +7,9 @@ import { Input } from "./ui/input";
 import { Select } from "./ui/select";
 import {
   SEQUENCE_DENSITY_OPTIONS,
+  SEQUENCE_GROOVE_OPTIONS,
   SEQUENCE_PATTERN_LENGTH_OPTIONS,
+  SEQUENCE_REGISTER_OPTIONS,
   SEQUENCE_STYLE_OPTIONS,
   SEQUENCE_VARIATION_OPTIONS,
 } from "../music/constants";
@@ -142,7 +144,7 @@ export function LeftSidebar({
                   Shape the internal rhythm engine for the generated bass and melody layers.
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
                 <ControlField label="Pattern Length" htmlFor="pattern-length">
                   <Select
                     id="pattern-length"
@@ -214,6 +216,44 @@ export function LeftSidebar({
                     {SEQUENCE_VARIATION_OPTIONS.map((variation) => (
                       <option key={variation} value={variation}>
                         {variation}
+                      </option>
+                    ))}
+                  </Select>
+                </ControlField>
+
+                <ControlField label="Groove" htmlFor="sequence-groove">
+                  <Select
+                    id="sequence-groove"
+                    value={settings.sequence.groove}
+                    onChange={(event) =>
+                      onUpdateSetting("sequence", {
+                        ...settings.sequence,
+                        groove: event.target.value as LoopSettings["sequence"]["groove"],
+                      })
+                    }
+                  >
+                    {SEQUENCE_GROOVE_OPTIONS.map((groove) => (
+                      <option key={groove} value={groove}>
+                        {groove}
+                      </option>
+                    ))}
+                  </Select>
+                </ControlField>
+
+                <ControlField label="Register" htmlFor="sequence-register">
+                  <Select
+                    id="sequence-register"
+                    value={settings.sequence.register}
+                    onChange={(event) =>
+                      onUpdateSetting("sequence", {
+                        ...settings.sequence,
+                        register: event.target.value as LoopSettings["sequence"]["register"],
+                      })
+                    }
+                  >
+                    {SEQUENCE_REGISTER_OPTIONS.map((register) => (
+                      <option key={register} value={register}>
+                        {register}
                       </option>
                     ))}
                   </Select>

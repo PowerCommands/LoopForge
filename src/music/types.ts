@@ -5,7 +5,9 @@ export type LayerName = "chords" | "melody" | "bass";
 export type SequencePatternLength = 8 | 16;
 export type SequenceDensity = "low" | "medium" | "high";
 export type SequenceVariation = "low" | "medium" | "high";
-export type SequenceStyle = "straight" | "syncopated" | "flowing" | "arp-like";
+export type SequenceStyle = "straight" | "syncopated" | "flowing" | "arp-like" | "staccato" | "legato" | "pulsing";
+export type SequenceGroove = "straight" | "swing" | "triplet";
+export type SequenceRegister = "low" | "mid" | "high" | "wide";
 export type SequenceStepState = "trigger" | "rest" | "hold";
 
 export interface LayerToggles {
@@ -19,6 +21,8 @@ export interface SequenceSettings {
   density: SequenceDensity;
   variation: SequenceVariation;
   style: SequenceStyle;
+  groove: SequenceGroove;
+  register: SequenceRegister;
 }
 
 export interface SequencePattern {

@@ -1,5 +1,5 @@
 import { Note, Scale } from "tonal";
-import { createBaseSequencePattern, createPatternForBar, getSequenceWindows } from "./sequence";
+import { createBaseSequencePattern, createPatternForBar, getSequenceWindows, type SequenceWindow } from "./sequence";
 import type {
   ChordEvent,
   GeneratedLoop,
@@ -48,6 +48,11 @@ interface MoodProfile {
 interface BassTarget {
   note: string;
   octave: number;
+}
+
+interface SequenceRenderWindow extends SequenceWindow {
+  time: number;
+  duration: number;
 }
 
 const MAJOR_DEGREE_ORDER: RomanDegree[] = ["I", "ii", "iii", "IV", "V", "vi", "vii"];
@@ -171,6 +176,9 @@ const MELODY_CONTOUR_POOLS = {
   syncopated: [0, 2, -2, 1, -1, 3, -3],
   flowing: [0, 1, 1, -1, 2, -2],
   "arp-like": [0, 2, 2, -1, -2, 1],
+  staccato: [0, 1, -1, 0, 2, -2],
+  legato: [0, 1, 1, -1, 2, -2, 3, -3],
+  pulsing: [0, 0, 1, -1, 0, 2, -2],
 } as const;
 
 const VARIATION_CHANGE_CHANCE = {
@@ -273,7 +281,7 @@ function buildMelody(
 
   progression.forEach((chord, barIndex) => {
     const pattern = createPatternForBar(basePattern, "melody", settings.sequence, barIndex);
-    const windows = getSequenceWindows(pattern);
+    const windows = renderSequenceWindows(getSequenceWindows(pattern), chord, "melody", settings);
 
     if (windows.length === 0) {
       return;
@@ -288,14 +296,16 @@ function buildMelody(
     }
 
     windows.forEach((window, noteIndex) => {
-      const isStrongAccent = window.startBeat === 0 || window.startBeat === 2;
+      const beatInBar = window.time - chord.time;
+      const strongAccent = isStrongAccent(beatInBar);
       const note = chooseMelodyNote(
         chord,
         scaleNotes,
         previousPitchClass,
         contour[noteIndex] ?? 0,
         noteIndex,
-        isStrongAccent,
+        windows.length,
+        strongAccent,
         settings,
         profile,
       );
@@ -304,9 +314,9 @@ function buildMelody(
 
       melody.push({
         note,
-        time: chord.time + window.startBeat,
-        duration: Math.max(0.25, window.durationBeats),
-        velocity: chooseMelodyVelocity(window.startBeat, noteIndex, settings, profile),
+        time: window.time,
+        duration: Math.max(0.2, window.duration),
+        velocity: chooseMelodyVelocity(beatInBar, noteIndex, settings, profile),
       });
     });
   });
@@ -325,17 +335,18 @@ function buildBass(
 
   progression.forEach((chord, barIndex) => {
     const pattern = createPatternForBar(basePattern, "bass", settings.sequence, barIndex);
-    const windows = getSequenceWindows(pattern);
+    const windows = renderSequenceWindows(getSequenceWindows(pattern), chord, "bass", settings);
     const nextChord = progression[(barIndex + 1) % progression.length] ?? chord;
 
     windows.forEach((window, noteIndex) => {
-      const target = chooseBassTarget(chord, nextChord, scaleNotes, noteIndex, windows.length, window.startBeat, settings);
+      const beatInBar = window.time - chord.time;
+      const target = chooseBassTarget(chord, nextChord, scaleNotes, noteIndex, windows.length, beatInBar, settings);
 
       bass.push({
         note: `${target.note}${target.octave}`,
-        time: chord.time + window.startBeat,
-        duration: Math.max(0.25, window.durationBeats),
-        velocity: chooseBassVelocity(window.startBeat, noteIndex, profile, settings),
+        time: window.time,
+        duration: Math.max(0.2, window.duration),
+        velocity: chooseBassVelocity(beatInBar, noteIndex, profile, settings),
       });
     });
   });
@@ -384,6 +395,7 @@ function chooseMelodyNote(
   previousPitchClass: string | null,
   contourMotion: number,
   noteIndex: number,
+  windowCount: number,
   isStrongAccent: boolean,
   settings: LoopSettings,
   profile: MoodProfile,
@@ -393,27 +405,58 @@ function chooseMelodyNote(
   if (settings.sequence.style === "arp-like") {
     const arpTone = chordTones[noteIndex % chordTones.length] ?? chordTones[0] ?? scaleNotes[0];
     const resolvedArpTone = isStrongAccent ? arpTone : keepScaleTone(arpTone, scaleNotes);
-    return `${resolvedArpTone}${chooseMelodyOctave(noteIndex, chord.bar, settings, profile)}`;
+    return `${resolvedArpTone}${chooseMelodyOctave(noteIndex, chord.bar, contourMotion, settings, profile)}`;
+  }
+
+  if (settings.sequence.style === "pulsing" && previousPitchClass && noteIndex % 2 === 1 && Math.random() < 0.7) {
+    const repeatedPitchClass = isStrongAccent
+      ? resolveChordToneTarget(previousPitchClass, chordTones, scaleNotes)
+      : previousPitchClass;
+    return `${repeatedPitchClass}${chooseMelodyOctave(noteIndex, chord.bar, 0, settings, profile)}`;
   }
 
   const previousIndex = previousPitchClass ? scaleNotes.indexOf(previousPitchClass) : -1;
   const seedIndex = previousIndex >= 0 ? previousIndex : scaleNotes.indexOf(chordTones[0] ?? scaleNotes[0]);
-  const nextPitchClass = scaleNotes[wrapScaleIndex(seedIndex + contourMotion, scaleNotes.length)] ?? scaleNotes[0];
+  const adjustedMotion =
+    settings.sequence.style === "pulsing" && noteIndex > 0 && noteIndex < windowCount - 1 ? 0 : contourMotion;
+  const nextPitchClass = scaleNotes[wrapScaleIndex(seedIndex + adjustedMotion, scaleNotes.length)] ?? scaleNotes[0];
   const resolvedPitchClass = isStrongAccent
     ? resolveChordToneTarget(nextPitchClass, chordTones, scaleNotes)
     : keepScaleTone(nextPitchClass, scaleNotes);
 
-  return `${resolvedPitchClass}${chooseMelodyOctave(noteIndex, chord.bar, settings, profile)}`;
+  return `${resolvedPitchClass}${chooseMelodyOctave(noteIndex, chord.bar, adjustedMotion, settings, profile)}`;
 }
 
 function chooseMelodyOctave(
   noteIndex: number,
   barIndex: number,
+  contourMotion: number,
   settings: LoopSettings,
   profile: MoodProfile,
 ): number {
   if (settings.sequence.style === "arp-like") {
+    if (settings.sequence.register === "low") {
+      return noteIndex % 3 === 2 ? 4 : 3;
+    }
+
+    if (settings.sequence.register === "high") {
+      return 5;
+    }
+
     return noteIndex % 3 === 2 ? 5 : 4;
+  }
+
+  if (settings.sequence.register === "low") {
+    return 4;
+  }
+
+  if (settings.sequence.register === "high") {
+    return 5;
+  }
+
+  if (settings.sequence.register === "wide") {
+    const widePool = [3, 4, 5, 4, 5];
+    return widePool[(noteIndex + barIndex + Math.abs(contourMotion)) % widePool.length] ?? 4;
   }
 
   return profile.melodyOctaves[(noteIndex + barIndex) % profile.melodyOctaves.length];
@@ -425,9 +468,9 @@ function chooseMelodyVelocity(
   settings: LoopSettings,
   profile: MoodProfile,
 ): number {
-  const accent = beat === 0 || beat === 2 ? 0.05 : -0.03;
+  const accent = isStrongAccent(beat) ? 0.05 : -0.03;
   const styleBoost = settings.sequence.style === "syncopated" && beat % 1 !== 0 ? 0.03 : 0;
-  const motifBoost = noteIndex % 4 === 0 ? 0.02 : 0;
+  const motifBoost = noteIndex % 4 === 0 || settings.sequence.style === "pulsing" ? 0.02 : 0;
   return clampVelocity(profile.melodyVelocity + accent + styleBoost + motifBoost);
 }
 
@@ -445,36 +488,52 @@ function chooseBassTarget(
   const rootIndex = scaleNotes.indexOf(root);
   const chordTones = chord.notes.map((note) => Note.pitchClass(note));
   const fifth = rootIndex >= 0 ? scaleNotes[(rootIndex + 4) % scaleNotes.length] : root;
-  const octaveRoot: BassTarget = { note: root, octave: 3 };
-  const lowRoot: BassTarget = { note: root, octave: 2 };
-  const fifthTarget: BassTarget = { note: fifth, octave: 2 };
-  const passingTarget: BassTarget = { note: choosePassingNote(root, nextRoot, scaleNotes), octave: 2 };
-  const thirdTarget: BassTarget = { note: chordTones[1] ?? root, octave: 2 };
-  const isStrongAccent = beat === 0 || beat === 2;
+  const octaveRoot = createBassTarget(root, "octave", settings.sequence.register);
+  const lowRoot = createBassTarget(root, "root", settings.sequence.register);
+  const fifthTarget = createBassTarget(fifth, "fifth", settings.sequence.register);
+  const passingTarget = createBassTarget(choosePassingNote(root, nextRoot, scaleNotes), "passing", settings.sequence.register);
+  const thirdTarget = createBassTarget(chordTones[1] ?? root, "third", settings.sequence.register);
+  const strongAccent = isStrongAccent(beat);
   const isLastWindow = noteIndex === windowCount - 1;
 
   if (noteIndex === 0) {
     return lowRoot;
   }
 
+  if (settings.sequence.style === "pulsing") {
+    return noteIndex % 2 === 0 ? lowRoot : pickRandom([lowRoot, fifthTarget, octaveRoot]);
+  }
+
   switch (settings.sequence.style) {
     case "arp-like":
       return [lowRoot, thirdTarget, fifthTarget, octaveRoot][noteIndex % 4] ?? lowRoot;
+    case "staccato":
+      if (isLastWindow && root !== nextRoot && Math.random() < 0.45) {
+        return passingTarget;
+      }
+
+      return strongAccent ? lowRoot : pickRandom([lowRoot, fifthTarget]);
+    case "legato":
+      if (strongAccent) {
+        return Math.random() < 0.78 ? lowRoot : fifthTarget;
+      }
+
+      return pickRandom([lowRoot, fifthTarget, octaveRoot]);
     case "syncopated":
       if (isLastWindow && root !== nextRoot && Math.random() < 0.55) {
         return passingTarget;
       }
 
-      return isStrongAccent ? lowRoot : pickRandom([lowRoot, fifthTarget, passingTarget]);
+      return strongAccent ? lowRoot : pickRandom([lowRoot, fifthTarget, passingTarget]);
     case "flowing":
-      if (isStrongAccent && Math.random() < 0.7) {
+      if (strongAccent && Math.random() < 0.7) {
         return lowRoot;
       }
 
       return pickRandom([lowRoot, fifthTarget, octaveRoot]);
     case "straight":
     default:
-      if (isStrongAccent) {
+      if (strongAccent) {
         return Math.random() < 0.75 ? lowRoot : fifthTarget;
       }
 
@@ -492,9 +551,85 @@ function chooseBassVelocity(
   profile: MoodProfile,
   settings: LoopSettings,
 ): number {
-  const accent = beat === 0 || beat === 2 ? 0.05 : -0.04;
-  const styleBoost = settings.sequence.style === "arp-like" && noteIndex % 2 === 1 ? 0.02 : 0;
+  const accent = isStrongAccent(beat) ? 0.05 : -0.04;
+  const styleBoost =
+    settings.sequence.style === "arp-like" && noteIndex % 2 === 1
+      ? 0.02
+      : settings.sequence.style === "pulsing"
+        ? 0.03
+        : 0;
   return clampVelocity(profile.bassVelocity + accent + styleBoost);
+}
+
+// Groove shifts rhythmic placement after the step pattern is created, while register
+// biases the octave span used for melody and bass without changing chord generation.
+function renderSequenceWindows(
+  windows: SequenceWindow[],
+  chord: ChordEvent,
+  layer: "melody" | "bass",
+  settings: LoopSettings,
+): SequenceRenderWindow[] {
+  return windows
+    .map((window, index) => {
+      const startBeat = applyGrooveToBeat(window.startBeat, settings);
+      const nextWindow = windows[index + 1];
+      const nextBeat = nextWindow ? applyGrooveToBeat(nextWindow.startBeat, settings) : 4;
+      const availableDuration = Math.max(0.2, nextBeat - startBeat);
+
+      return {
+        ...window,
+        time: chord.time + startBeat,
+        duration: Math.min(shapeDurationByStyle(availableDuration, settings, layer), Math.max(0.2, 4 - startBeat)),
+      };
+    })
+    .filter((window) => window.time < chord.time + 4);
+}
+
+function applyGrooveToBeat(beat: number, settings: LoopSettings): number {
+  switch (settings.sequence.groove) {
+    case "swing":
+      return Math.abs((beat % 1) - 0.5) < 0.001 ? beat + 0.14 : beat;
+    case "triplet":
+      return Math.round(beat * 3) / 3;
+    case "straight":
+    default:
+      return beat;
+  }
+}
+
+function shapeDurationByStyle(duration: number, settings: LoopSettings, layer: "melody" | "bass"): number {
+  const minimumDuration = settings.sequence.groove === "triplet" ? 1 / 3 : 0.25;
+
+  switch (settings.sequence.style) {
+    case "staccato":
+      return Math.max(minimumDuration * 0.75, duration * (layer === "bass" ? 0.52 : 0.44));
+    case "legato":
+      return Math.max(minimumDuration, duration * 0.95);
+    case "pulsing":
+      return Math.max(minimumDuration, duration * 0.7);
+    case "flowing":
+      return Math.max(minimumDuration, duration * 0.9);
+    default:
+      return Math.max(minimumDuration, duration * 0.82);
+  }
+}
+
+function createBassTarget(
+  note: string,
+  role: "root" | "octave" | "fifth" | "third" | "passing",
+  register: LoopSettings["sequence"]["register"],
+): BassTarget {
+  const octaveMap = {
+    low: { root: 2, octave: 2, fifth: 2, third: 2, passing: 2 },
+    mid: { root: 2, octave: 3, fifth: 2, third: 2, passing: 2 },
+    high: { root: 3, octave: 3, fifth: 3, third: 3, passing: 3 },
+    wide: { root: 2, octave: 3, fifth: 2, third: 3, passing: 2 },
+  } as const;
+
+  return {
+    note,
+    octave: octaveMap[register][role],
+  };
 }
 
 function choosePassingNote(currentRoot: string, nextRoot: string, scaleNotes: string[]): string {
@@ -534,6 +669,10 @@ function resolveChordToneTarget(candidate: string, chordTones: string[], scaleNo
 
 function keepScaleTone(candidate: string, scaleNotes: string[]): string {
   return scaleNotes.includes(candidate) ? candidate : scaleNotes[0];
+}
+
+function isStrongAccent(beat: number): boolean {
+  return Math.abs((beat % 4) - 0) < 0.001 || Math.abs((beat % 4) - 2) < 0.001;
 }
 
 function wrapScaleIndex(index: number, size: number): number {

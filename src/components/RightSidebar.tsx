@@ -1,5 +1,4 @@
 import { ArrangementPanel } from "./ArrangementPanel";
-import { SavedLoopsPanel } from "./SavedLoopsPanel";
 import type { SavedLoop } from "../music/types";
 
 interface RightSidebarProps {
@@ -8,9 +7,9 @@ interface RightSidebarProps {
   arrangementUrl: string;
   isEditingArrangement: boolean;
   onRename: (id: string, name: string) => void;
-  onMoveUp: (id: string) => void;
-  onMoveDown: (id: string) => void;
+  onReorder: (sourceId: string, targetId: string) => void;
   onRemove: (id: string) => void;
+  onClearAll: () => void;
   onPlayLoop: (savedLoop: SavedLoop) => void;
   onArrangementNameChange: (name: string) => void;
   onArrangementUrlChange: (url: string) => void;
@@ -22,16 +21,15 @@ interface RightSidebarProps {
 export function RightSidebar(props: RightSidebarProps) {
   return (
     <div className="flex flex-col gap-4">
-      <SavedLoopsPanel savedLoops={props.savedLoops} onPlayLoop={props.onPlayLoop} />
       <ArrangementPanel
         savedLoops={props.savedLoops}
         arrangementName={props.arrangementName}
         arrangementUrl={props.arrangementUrl}
         isEditingArrangement={props.isEditingArrangement}
         onRename={props.onRename}
-        onMoveUp={props.onMoveUp}
-        onMoveDown={props.onMoveDown}
+        onReorder={props.onReorder}
         onRemove={props.onRemove}
+        onClearAll={props.onClearAll}
         onPlayLoop={props.onPlayLoop}
         onArrangementNameChange={props.onArrangementNameChange}
         onArrangementUrlChange={props.onArrangementUrlChange}

@@ -1,7 +1,9 @@
+import { useState } from "react";
 import type { SavedLoop } from "../music/types";
 import { getArrangementSeconds } from "../music/arrangement";
+import { useConfirmDialog } from "./ui/confirm-dialog";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 
 interface ArrangementPanelProps {
@@ -10,9 +12,9 @@ interface ArrangementPanelProps {
   arrangementUrl: string;
   isEditingArrangement: boolean;
   onRename: (id: string, name: string) => void;
-  onMoveUp: (id: string) => void;
-  onMoveDown: (id: string) => void;
+  onReorder: (sourceId: string, targetId: string) => void;
   onRemove: (id: string) => void;
+  onClearAll: () => void;
   onPlayLoop: (savedLoop: SavedLoop) => void;
   onArrangementNameChange: (name: string) => void;
   onArrangementUrlChange: (url: string) => void;
@@ -27,9 +29,9 @@ export function ArrangementPanel({
   arrangementUrl,
   isEditingArrangement,
   onRename,
-  onMoveUp,
-  onMoveDown,
+  onReorder,
   onRemove,
+  onClearAll,
   onPlayLoop,
   onArrangementNameChange,
   onArrangementUrlChange,
@@ -39,14 +41,28 @@ export function ArrangementPanel({
 }: ArrangementPanelProps) {
   const canSaveArrangement = savedLoops.length > 0 && arrangementName.trim().length > 0;
   const totalSeconds = getArrangementSeconds(savedLoops);
+  const [draggedLoopId, setDraggedLoopId] = useState<string | null>(null);
+  const confirm = useConfirmDialog();
+
+  const handleClearAll = async () => {
+    const shouldContinue = await confirm({
+      title: "Clear Arrangement?",
+      description: "This removes all loops currently loaded in the arrangement.",
+      confirmLabel: "Clear All",
+      tone: "destructive",
+    });
+
+    if (!shouldContinue) {
+      return;
+    }
+
+    onClearAll();
+  };
 
   return (
     <Card>
       <CardHeader className="pb-4">
         <CardTitle>Arrangement</CardTitle>
-        <CardDescription>
-          Build a simple song sketch by assembling saved loops here. Drag and drop sequencing will be added later.
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-3">
@@ -59,7 +75,12 @@ export function ArrangementPanel({
         </div>
 
         {savedLoops.length > 0 ? (
-          <p className="m-0 text-sm font-medium text-muted-foreground">Total arrangement time: {totalSeconds} sec</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="m-0 text-sm font-medium text-muted-foreground">Total arrangement time: {totalSeconds} sec</p>
+            <Button type="button" size="sm" variant="secondary" onClick={handleClearAll}>
+              Clear all
+            </Button>
+          </div>
         ) : null}
 
         {savedLoops.length === 0 ? (
@@ -69,7 +90,24 @@ export function ArrangementPanel({
         ) : (
           <div className="space-y-3">
             {savedLoops.map((savedLoop, index) => (
-              <section className="rounded-md border border-border bg-white/60 p-4 dark:bg-[#17152d]" key={savedLoop.id}>
+              <section
+                className={`rounded-md border border-border bg-white/60 p-4 transition dark:bg-[#17152d] ${draggedLoopId === savedLoop.id ? "opacity-70" : ""}`}
+                key={savedLoop.id}
+                draggable
+                onDragStart={() => setDraggedLoopId(savedLoop.id)}
+                onDragEnd={() => setDraggedLoopId(null)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+
+                  if (!draggedLoopId || draggedLoopId === savedLoop.id) {
+                    return;
+                  }
+
+                  onReorder(draggedLoopId, savedLoop.id);
+                  setDraggedLoopId(null);
+                }}
+              >
                 <Input
                   type="text"
                   value={savedLoop.name}
@@ -91,20 +129,21 @@ export function ArrangementPanel({
                       <path d="M8 5.14v13.72a1 1 0 0 0 1.52.86l10.29-6.86a1 1 0 0 0 0-1.66L9.52 4.28A1 1 0 0 0 8 5.14Z" />
                     </svg>
                   </Button>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => onMoveUp(savedLoop.id)} disabled={index === 0}>
-                    Up
-                  </Button>
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
-                    onClick={() => onMoveDown(savedLoop.id)}
-                    disabled={index === savedLoops.length - 1}
+                    onClick={() => onRemove(savedLoop.id)}
+                    title="Remove loop"
+                    aria-label="Remove loop"
                   >
-                    Down
-                  </Button>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => onRemove(savedLoop.id)}>
-                    Remove
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4h8v2" />
+                      <path d="M19 6l-1 14H6L5 6" />
+                      <path d="M10 11v6" />
+                      <path d="M14 11v6" />
+                    </svg>
                   </Button>
                 </div>
               </section>

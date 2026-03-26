@@ -19,6 +19,7 @@ interface LoopVisualizationProps {
   onUndo: () => void;
   onRedo: () => void;
   onReset: () => void;
+  onTranspose: (semitones: number) => void;
   onSave: () => void;
   canUndo: boolean;
   canRedo: boolean;
@@ -107,6 +108,7 @@ export function LoopVisualization({
   onUndo,
   onRedo,
   onReset,
+  onTranspose,
   onSave,
   canUndo,
   canRedo,
@@ -349,6 +351,23 @@ export function LoopVisualization({
                   <path d="M3 3v6h6" />
                 </svg>
               </Button>
+              <div className="ml-1 inline-flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Transpose</span>
+                <Button type="button" size="sm" variant="secondary" onClick={() => onTranspose(1)} title="Transpose up" aria-label="Transpose up">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
+                    <path d="m12 5-5 5" />
+                    <path d="m12 5 5 5" />
+                    <path d="M12 5v14" />
+                  </svg>
+                </Button>
+                <Button type="button" size="sm" variant="secondary" onClick={() => onTranspose(-1)} title="Transpose down" aria-label="Transpose down">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
+                    <path d="m12 19-5-5" />
+                    <path d="m12 19 5-5" />
+                    <path d="M12 5v14" />
+                  </svg>
+                </Button>
+              </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">

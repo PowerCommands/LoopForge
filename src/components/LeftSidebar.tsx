@@ -7,6 +7,7 @@ import { Input } from "./ui/input";
 import { Select } from "./ui/select";
 import {
   SEQUENCE_DENSITY_OPTIONS,
+  SEQUENCE_EVOLUTION_OPTIONS,
   SEQUENCE_GROOVE_OPTIONS,
   SEQUENCE_PATTERN_LENGTH_OPTIONS,
   SEQUENCE_REGISTER_OPTIONS,
@@ -216,6 +217,25 @@ export function LeftSidebar({
                     {SEQUENCE_VARIATION_OPTIONS.map((variation) => (
                       <option key={variation} value={variation}>
                         {variation}
+                      </option>
+                    ))}
+                  </Select>
+                </ControlField>
+
+                <ControlField label="Evolution" htmlFor="sequence-evolution">
+                  <Select
+                    id="sequence-evolution"
+                    value={settings.sequence.evolution}
+                    onChange={(event) =>
+                      onUpdateSetting("sequence", {
+                        ...settings.sequence,
+                        evolution: event.target.value as LoopSettings["sequence"]["evolution"],
+                      })
+                    }
+                  >
+                    {SEQUENCE_EVOLUTION_OPTIONS.map((evolution) => (
+                      <option key={evolution} value={evolution}>
+                        {evolution}
                       </option>
                     ))}
                   </Select>

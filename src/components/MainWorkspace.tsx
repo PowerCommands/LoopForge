@@ -10,6 +10,7 @@ interface MainWorkspaceProps {
   onUndo: () => void;
   onRedo: () => void;
   onReset: () => void;
+  onTranspose: (semitones: number) => void;
   onSave: () => void;
   canUndo: boolean;
   canRedo: boolean;
@@ -23,6 +24,7 @@ export function MainWorkspace({
   onUndo,
   onRedo,
   onReset,
+  onTranspose,
   onSave,
   canUndo,
   canRedo,
@@ -41,6 +43,7 @@ export function MainWorkspace({
           onUndo={onUndo}
           onRedo={onRedo}
           onReset={onReset}
+          onTranspose={onTranspose}
           onSave={onSave}
           canUndo={canUndo}
           canRedo={canRedo}

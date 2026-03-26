@@ -34,7 +34,8 @@ export function LoopSummary({ loop, compact = false }: LoopSummaryProps) {
         <li>Length: {loop.settings.length} bars</li>
         <li>
           Sequence: {loop.settings.sequence.patternLength} steps, {loop.settings.sequence.density} density,{" "}
-          {loop.settings.sequence.variation} variation, {loop.settings.sequence.style}, {loop.settings.sequence.groove} groove,{" "}
+          {loop.settings.sequence.variation} variation, {loop.settings.sequence.evolution} evolution, {loop.settings.sequence.style},{" "}
+          {loop.settings.sequence.groove} groove,{" "}
           {loop.settings.sequence.register} register
         </li>
       </ul>

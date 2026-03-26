@@ -23,6 +23,7 @@ import {
   createEditableLoopFromGeneratedLoop,
   createGeneratedLoopFromEditableLoop,
   editableLoopsEqual,
+  transposeEditableLoop,
   type EditableLoop,
 } from "./music/editor";
 import {
@@ -51,6 +52,7 @@ const SETTINGS_COOKIE_KEYS = {
   patternLength: "loop-forge-pattern-length",
   density: "loop-forge-density",
   variation: "loop-forge-variation",
+  evolution: "loop-forge-evolution",
   style: "loop-forge-style",
   groove: "loop-forge-groove",
   register: "loop-forge-register",
@@ -109,6 +111,7 @@ function getInitialSettings(): LoopSettings {
   const patternLength = Number(getCookieValue(SETTINGS_COOKIE_KEYS.patternLength));
   const density = getCookieValue(SETTINGS_COOKIE_KEYS.density);
   const variation = getCookieValue(SETTINGS_COOKIE_KEYS.variation);
+  const evolution = getCookieValue(SETTINGS_COOKIE_KEYS.evolution);
   const style = getCookieValue(SETTINGS_COOKIE_KEYS.style);
   const groove = getCookieValue(SETTINGS_COOKIE_KEYS.groove);
   const register = getCookieValue(SETTINGS_COOKIE_KEYS.register);
@@ -127,6 +130,13 @@ function getInitialSettings(): LoopSettings {
         variation === "low" || variation === "medium" || variation === "high"
           ? variation
           : DEFAULT_SEQUENCE_SETTINGS.variation,
+      evolution:
+        evolution === "static" ||
+        evolution === "subtle variation" ||
+        evolution === "developing" ||
+        evolution === "call & response"
+          ? evolution
+          : DEFAULT_SEQUENCE_SETTINGS.evolution,
       style:
         style === "straight" || style === "syncopated" || style === "flowing" || style === "arp-like" || style === "staccato" || style === "legato" || style === "pulsing"
           ? style
@@ -302,6 +312,7 @@ export default function App() {
     setCookieValue(SETTINGS_COOKIE_KEYS.patternLength, String(settings.sequence.patternLength));
     setCookieValue(SETTINGS_COOKIE_KEYS.density, settings.sequence.density);
     setCookieValue(SETTINGS_COOKIE_KEYS.variation, settings.sequence.variation);
+    setCookieValue(SETTINGS_COOKIE_KEYS.evolution, settings.sequence.evolution);
     setCookieValue(SETTINGS_COOKIE_KEYS.style, settings.sequence.style);
     setCookieValue(SETTINGS_COOKIE_KEYS.groove, settings.sequence.groove);
     setCookieValue(SETTINGS_COOKIE_KEYS.register, settings.sequence.register);
@@ -314,6 +325,7 @@ export default function App() {
     settings.sequence.patternLength,
     settings.sequence.density,
     settings.sequence.variation,
+    settings.sequence.evolution,
     settings.sequence.style,
     settings.sequence.groove,
     settings.sequence.register,
@@ -704,6 +716,10 @@ export default function App() {
     setRedoStack([]);
   };
 
+  const handleCurrentLoopTranspose = (semitones: number) => {
+    applyEditableLoopChange(transposeEditableLoop(editableLoop, semitones));
+  };
+
   const handleCurrentLoopSave = () => {
     setSavedEditableLoop(cloneEditableLoop(editableLoop));
     setUndoStack([]);
@@ -787,6 +803,7 @@ export default function App() {
             onUndo={handleCurrentLoopUndo}
             onRedo={handleCurrentLoopRedo}
             onReset={handleCurrentLoopReset}
+            onTranspose={handleCurrentLoopTranspose}
             onSave={handleCurrentLoopSave}
             canUndo={undoStack.length > 0}
             canRedo={redoStack.length > 0}

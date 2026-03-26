@@ -3,6 +3,11 @@ import type { ChordEvent, GeneratedLoop, LayerName, LoopSettings, TimedNote } fr
 
 export const PIANO_ROLL_STEPS_PER_BEAT = 4;
 const DEFAULT_CHORD_VELOCITY = 0.55;
+const TRANSPOSE_LIMITS: Record<LayerName, { min: number; max: number }> = {
+  chords: { min: 36, max: 84 },
+  melody: { min: 48, max: 96 },
+  bass: { min: 28, max: 72 },
+};
 
 export interface EditableLoopNote {
   id: string;
@@ -180,10 +185,11 @@ export function createGeneratedLoopFromEditableLoop(editableLoop: EditableLoop, 
 export function clampEditableNoteToLoop(note: EditableLoopNote, totalSteps: number): EditableLoopNote {
   const safeDuration = Math.max(1, note.durationSteps);
   const maxStartStep = Math.max(0, totalSteps - safeDuration);
+  const pitchLimits = TRANSPOSE_LIMITS[note.layer];
 
   return {
     ...note,
-    pitch: Math.max(24, Math.min(96, note.pitch)),
+    pitch: Math.max(pitchLimits.min, Math.min(pitchLimits.max, note.pitch)),
     startStep: Math.max(0, Math.min(maxStartStep, note.startStep)),
     durationSteps: Math.min(Math.max(1, safeDuration), totalSteps),
   };
@@ -200,4 +206,24 @@ export function createNewEditableNote(layer: LayerName, pitch: number, startStep
     },
     totalSteps,
   );
+}
+
+export function transposeEditableLoop(loop: EditableLoop, semitones: number): EditableLoop {
+  if (semitones === 0) {
+    return cloneEditableLoop(loop);
+  }
+
+  return {
+    ...loop,
+    notes: loop.notes.map((note) =>
+      // Clamp each transposed note so global shifts stay usable at the edges of the piano roll.
+      clampEditableNoteToLoop(
+        {
+          ...note,
+          pitch: note.pitch + semitones,
+        },
+        loop.totalSteps,
+      ),
+    ),
+  };
 }

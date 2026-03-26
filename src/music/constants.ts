@@ -1,6 +1,7 @@
 import type {
   LoopSettings,
   SequenceDensity,
+  SequenceEvolution,
   SequenceGroove,
   SequencePatternLength,
   SequenceRegister,
@@ -27,6 +28,7 @@ export const KEY_OPTIONS = [
 export const SEQUENCE_PATTERN_LENGTH_OPTIONS: SequencePatternLength[] = [8, 16];
 export const SEQUENCE_DENSITY_OPTIONS: SequenceDensity[] = ["low", "medium", "high"];
 export const SEQUENCE_VARIATION_OPTIONS: SequenceVariation[] = ["low", "medium", "high"];
+export const SEQUENCE_EVOLUTION_OPTIONS: SequenceEvolution[] = ["static", "subtle variation", "developing", "call & response"];
 export const SEQUENCE_STYLE_OPTIONS: SequenceStyle[] = ["straight", "syncopated", "flowing", "arp-like", "staccato", "legato", "pulsing"];
 export const SEQUENCE_GROOVE_OPTIONS: SequenceGroove[] = ["straight", "swing", "triplet"];
 export const SEQUENCE_REGISTER_OPTIONS: SequenceRegister[] = ["low", "mid", "high", "wide"];
@@ -35,6 +37,7 @@ export const DEFAULT_SEQUENCE_SETTINGS: SequenceSettings = {
   patternLength: 16,
   density: "medium",
   variation: "medium",
+  evolution: "static",
   style: "straight",
   groove: "straight",
   register: "mid",
@@ -65,6 +68,9 @@ export function normalizeSequenceSettings(sequence?: Partial<SequenceSettings> |
     variation: sequence?.variation && SEQUENCE_VARIATION_OPTIONS.includes(sequence.variation)
       ? sequence.variation
       : DEFAULT_SEQUENCE_SETTINGS.variation,
+    evolution: sequence?.evolution && SEQUENCE_EVOLUTION_OPTIONS.includes(sequence.evolution)
+      ? sequence.evolution
+      : DEFAULT_SEQUENCE_SETTINGS.evolution,
     style: sequence?.style && SEQUENCE_STYLE_OPTIONS.includes(sequence.style)
       ? sequence.style
       : DEFAULT_SEQUENCE_SETTINGS.style,

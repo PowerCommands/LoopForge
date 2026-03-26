@@ -1,4 +1,5 @@
 import { Note } from "tonal";
+import { KEY_OPTIONS } from "./constants";
 import type { ChordEvent, GeneratedLoop, LayerName, LoopSettings, TimedNote } from "./types";
 
 export const PIANO_ROLL_STEPS_PER_BEAT = 4;
@@ -51,6 +52,16 @@ function getPitchName(midi: number): string {
 
 function roundToStep(beats: number): number {
   return Math.max(0, Math.round(beats * PIANO_ROLL_STEPS_PER_BEAT));
+}
+
+function transposeLoopKey(key: string, semitones: number): string {
+  const chroma = Note.chroma(key);
+
+  if (chroma === null) {
+    return key;
+  }
+
+  return KEY_OPTIONS[((chroma + semitones) % KEY_OPTIONS.length + KEY_OPTIONS.length) % KEY_OPTIONS.length] ?? key;
 }
 
 function noteToEditable(layer: LayerName, note: TimedNote, index: number): EditableLoopNote {
@@ -215,6 +226,10 @@ export function transposeEditableLoop(loop: EditableLoop, semitones: number): Ed
 
   return {
     ...loop,
+    settings: {
+      ...loop.settings,
+      key: transposeLoopKey(loop.settings.key, semitones),
+    },
     notes: loop.notes.map((note) =>
       // Clamp each transposed note so global shifts stay usable at the edges of the piano roll.
       clampEditableNoteToLoop(

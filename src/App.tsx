@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrangementLibraryView } from "./components/ArrangementLibraryView";
 import { AppShell } from "./components/AppShell";
 import { LeftSidebar } from "./components/LeftSidebar";
+import { HelpWorkspace } from "./components/HelpWorkspace";
 import { LyricsWorkspace } from "./components/LyricsWorkspace";
 import { MainWorkspace } from "./components/MainWorkspace";
 import { RightSidebar } from "./components/RightSidebar";
@@ -17,7 +18,15 @@ import {
   renderCurrentLoopToAudioBuffer,
 } from "./audio/exportWav";
 import type { ExportFormat } from "./components/ui/export-dialog";
-import { cloneGeneratedLoop, cloneSavedLoops, createSavedLoop, getDefaultLoopName, normalizeGeneratedLoop, normalizeSavedLoop } from "./music/arrangement";
+import {
+  cloneGeneratedLoop,
+  cloneSavedLoops,
+  createSavedLoop,
+  getDefaultLoopName,
+  getLoopSeconds,
+  normalizeGeneratedLoop,
+  normalizeSavedLoop,
+} from "./music/arrangement";
 import {
   cloneEditableLoop,
   createEditableLoopFromGeneratedLoop,
@@ -66,6 +75,7 @@ interface StudioDraftPayload {
   arrangementName?: string;
   arrangementUrl?: string;
   editingArrangementId?: string | null;
+  editingSavedLoopId?: string | null;
 }
 
 interface StudioDraftState {
@@ -76,6 +86,7 @@ interface StudioDraftState {
   arrangementName: string;
   arrangementUrl: string;
   editingArrangementId: string | null;
+  editingSavedLoopId: string | null;
 }
 
 function getCookieValue(name: string): string | null {
@@ -181,6 +192,7 @@ function loadStudioDraftState(): StudioDraftState {
       arrangementName: "",
       arrangementUrl: "",
       editingArrangementId: null,
+      editingSavedLoopId: null,
     };
   }
 
@@ -195,6 +207,7 @@ function loadStudioDraftState(): StudioDraftState {
       arrangementName: "",
       arrangementUrl: "",
       editingArrangementId: null,
+      editingSavedLoopId: null,
     };
   }
 
@@ -222,6 +235,7 @@ function loadStudioDraftState(): StudioDraftState {
       arrangementName: typeof parsed.arrangementName === "string" ? parsed.arrangementName : "",
       arrangementUrl: typeof parsed.arrangementUrl === "string" ? parsed.arrangementUrl : "",
       editingArrangementId: typeof parsed.editingArrangementId === "string" ? parsed.editingArrangementId : null,
+      editingSavedLoopId: typeof parsed.editingSavedLoopId === "string" ? parsed.editingSavedLoopId : null,
     };
   } catch {
     return {
@@ -232,6 +246,7 @@ function loadStudioDraftState(): StudioDraftState {
       arrangementName: "",
       arrangementUrl: "",
       editingArrangementId: null,
+      editingSavedLoopId: null,
     };
   }
 }
@@ -245,7 +260,7 @@ export default function App() {
   const [undoStack, setUndoStack] = useState<EditableLoop[]>([]);
   const [redoStack, setRedoStack] = useState<EditableLoop[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [activeView, setActiveView] = useState<"studio" | "library" | "lyrics" | "settings">("studio");
+  const [activeView, setActiveView] = useState<"studio" | "library" | "lyrics" | "settings" | "help">("studio");
   const [autoplay, setAutoplay] = useState(() => {
     if (typeof document === "undefined") {
       return false;
@@ -265,6 +280,7 @@ export default function App() {
   const [arrangementName, setArrangementName] = useState(initialStudioDraft.arrangementName);
   const [arrangementUrl, setArrangementUrl] = useState(initialStudioDraft.arrangementUrl);
   const [editingArrangementId, setEditingArrangementId] = useState<string | null>(initialStudioDraft.editingArrangementId);
+  const [editingSavedLoopId, setEditingSavedLoopId] = useState<string | null>(initialStudioDraft.editingSavedLoopId);
   const [storedArrangements, setStoredArrangements] = useState<StoredArrangement[]>(() => loadStoredArrangements());
   const [isExportingWav, setIsExportingWav] = useState(false);
   const [wavExportStatus, setWavExportStatus] = useState<string | null>(null);
@@ -277,6 +293,13 @@ export default function App() {
 
     return createGeneratedLoopFromEditableLoop(editableLoop, settings.tempo);
   }, [editableLoop, settings.tempo]);
+  const savedCurrentLoop = useMemo(() => {
+    if (!savedEditableLoop) {
+      return null;
+    }
+
+    return createGeneratedLoopFromEditableLoop(savedEditableLoop, settings.tempo);
+  }, [savedEditableLoop, settings.tempo]);
 
   const canGenerate = useMemo(
     () => settings.layers.chords || settings.layers.melody || settings.layers.bass,
@@ -348,10 +371,11 @@ export default function App() {
       arrangementName,
       arrangementUrl,
       editingArrangementId,
+      editingSavedLoopId,
     };
 
     window.localStorage.setItem(APP_STORAGE_KEYS.studioDraft, JSON.stringify(draft));
-  }, [arrangementName, arrangementUrl, currentLoop, editingArrangementId, savedEditableLoop, savedLoops, settings]);
+  }, [arrangementName, arrangementUrl, currentLoop, editingArrangementId, editingSavedLoopId, savedEditableLoop, savedLoops, settings]);
 
   const clearPlaybackTimeout = () => {
     if (typeof window === "undefined" || playbackTimeoutRef.current === null) {
@@ -450,6 +474,7 @@ export default function App() {
     setSavedEditableLoop(cloneEditableLoop(nextEditableLoop));
     setUndoStack([]);
     setRedoStack([]);
+    setEditingSavedLoopId(null);
     setIsPlaying(false);
 
     if (autoplay) {
@@ -524,16 +549,33 @@ export default function App() {
     }
   };
 
-  const handleSaveLoop = () => {
+  const promptLoopName = (defaultName: string) => {
+    const providedName = window.prompt("Loop name", defaultName)?.trim() ?? "";
+    return providedName.length > 0 ? providedName : defaultName;
+  };
+
+  const appendCurrentLoopToArrangement = () => {
     if (!currentLoop) {
+      return null;
+    }
+
+    const name = promptLoopName(getDefaultLoopName(savedLoops));
+    const nextSavedLoop = createSavedLoop(currentLoop, name);
+    setSavedLoops((current) => [...current, nextSavedLoop]);
+    return nextSavedLoop;
+  };
+
+  const handleAddLoop = () => {
+    const nextSavedLoop = appendCurrentLoopToArrangement();
+
+    if (!nextSavedLoop) {
       return;
     }
 
-    const defaultName = getDefaultLoopName(savedLoops);
-    const providedName = window.prompt("Loop name", defaultName)?.trim() ?? "";
-    const name = providedName.length > 0 ? providedName : defaultName;
-
-    setSavedLoops((current) => [...current, createSavedLoop(currentLoop, name)]);
+    setSavedEditableLoop(cloneEditableLoop(editableLoop));
+    setUndoStack([]);
+    setRedoStack([]);
+    setEditingSavedLoopId(nextSavedLoop.id);
   };
 
   const handleRenameSavedLoop = (id: string, name: string) => {
@@ -567,6 +609,10 @@ export default function App() {
 
   const handleRemoveSavedLoop = (id: string) => {
     setSavedLoops((current) => current.filter((savedLoop) => savedLoop.id !== id));
+
+    if (editingSavedLoopId === id) {
+      setEditingSavedLoopId(null);
+    }
   };
 
   const handleClearSavedLoops = () => {
@@ -634,6 +680,7 @@ export default function App() {
     setArrangementName(studioDraft.arrangementName);
     setArrangementUrl(studioDraft.arrangementUrl);
     setEditingArrangementId(typeof studioDraft.editingArrangementId === "string" ? studioDraft.editingArrangementId : null);
+    setEditingSavedLoopId(typeof studioDraft.editingSavedLoopId === "string" ? studioDraft.editingSavedLoopId : null);
 
     if (typeof window !== "undefined") {
       const storedVolume = Number(window.localStorage.getItem(APP_STORAGE_KEYS.volume));
@@ -675,6 +722,17 @@ export default function App() {
     setArrangementName(arrangement.name);
     setArrangementUrl(arrangement.url);
     setEditingArrangementId(arrangement.id);
+    setEditingSavedLoopId(null);
+    setActiveView("studio");
+  };
+
+  const handleEditSavedLoop = (savedLoop: SavedLoop) => {
+    const nextEditableLoop = createEditableLoopFromGeneratedLoop(savedLoop.loop);
+    setEditableLoop(nextEditableLoop);
+    setSavedEditableLoop(cloneEditableLoop(nextEditableLoop));
+    setUndoStack([]);
+    setRedoStack([]);
+    setEditingSavedLoopId(savedLoop.id);
     setActiveView("studio");
   };
 
@@ -724,6 +782,22 @@ export default function App() {
     setSavedEditableLoop(cloneEditableLoop(editableLoop));
     setUndoStack([]);
     setRedoStack([]);
+
+    if (!currentLoop || !editingSavedLoopId) {
+      return;
+    }
+
+    setSavedLoops((current) =>
+      current.map((savedLoop) =>
+        savedLoop.id === editingSavedLoopId
+          ? {
+              ...savedLoop,
+              seconds: getLoopSeconds(currentLoop),
+              loop: cloneGeneratedLoop(currentLoop),
+            }
+          : savedLoop,
+      ),
+    );
   };
 
   const handleCurrentLoopChange = (nextLoop: EditableLoop) => {
@@ -765,25 +839,26 @@ export default function App() {
           <LyricsWorkspace arrangements={storedArrangements} onArrangementLyricsChange={handleArrangementLyricsChange} />
         ) : activeView === "settings" ? (
           <SettingsWorkspace arrangements={storedArrangements} onStorageChanged={handleStorageChanged} />
+        ) : activeView === "help" ? (
+          <HelpWorkspace />
         ) : undefined
       }
       leftSidebar={
         activeView === "studio" ? (
           <LeftSidebar
             settings={settings}
-            loop={currentLoop}
+            loop={savedCurrentLoop}
             keyOptions={KEY_OPTIONS}
             scaleOptions={SCALE_OPTIONS}
             moodOptions={MOOD_OPTIONS}
             canGenerate={canGenerate}
-            hasCurrentLoop={Boolean(currentLoop)}
+            hasCurrentLoop={Boolean(savedCurrentLoop)}
             isPlaying={isPlaying}
             autoplay={autoplay}
             onUpdateSetting={updateSettings}
             onUpdateLayers={(layers) => updateSettings("layers", layers)}
             onAutoplayChange={setAutoplay}
             onGenerate={handleGenerate}
-            onSaveLoop={handleSaveLoop}
             onPlay={handlePlay}
             onStop={handleStop}
             onExportMidi={handleExport}
@@ -805,6 +880,7 @@ export default function App() {
             onReset={handleCurrentLoopReset}
             onTranspose={handleCurrentLoopTranspose}
             onSave={handleCurrentLoopSave}
+            onAdd={handleAddLoop}
             canUndo={undoStack.length > 0}
             canRedo={redoStack.length > 0}
             hasUnsavedChanges={!editableLoopsEqual(editableLoop, savedEditableLoop)}
@@ -823,6 +899,7 @@ export default function App() {
             onRemove={handleRemoveSavedLoop}
             onClearAll={handleClearSavedLoops}
             onPlayLoop={handlePreviewSavedLoop}
+            onEditLoop={handleEditSavedLoop}
             onArrangementNameChange={setArrangementName}
             onArrangementUrlChange={setArrangementUrl}
             onPlayArrangement={handlePlayArrangement}

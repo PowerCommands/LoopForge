@@ -16,6 +16,7 @@ interface ArrangementPanelProps {
   onRemove: (id: string) => void;
   onClearAll: () => void;
   onPlayLoop: (savedLoop: SavedLoop) => void;
+  onEditLoop: (savedLoop: SavedLoop) => void;
   onArrangementNameChange: (name: string) => void;
   onArrangementUrlChange: (url: string) => void;
   onPlayArrangement: () => void;
@@ -33,6 +34,7 @@ export function ArrangementPanel({
   onRemove,
   onClearAll,
   onPlayLoop,
+  onEditLoop,
   onArrangementNameChange,
   onArrangementUrlChange,
   onPlayArrangement,
@@ -57,6 +59,20 @@ export function ArrangementPanel({
     }
 
     onClearAll();
+  };
+
+  const handleEditLoop = async (savedLoop: SavedLoop) => {
+    const shouldContinue = await confirm({
+      title: "Open Loop For Editing?",
+      description: "The current piano roll loop will be replaced with this arrangement loop.",
+      confirmLabel: "Open Loop",
+    });
+
+    if (!shouldContinue) {
+      return;
+    }
+
+    onEditLoop(savedLoop);
   };
 
   return (
@@ -127,6 +143,19 @@ export function ArrangementPanel({
                   <Button type="button" variant="secondary" size="sm" onClick={() => onPlayLoop(savedLoop)} title="Play loop" aria-label="Play loop">
                     <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden="true">
                       <path d="M8 5.14v13.72a1 1 0 0 0 1.52.86l10.29-6.86a1 1 0 0 0 0-1.66L9.52 4.28A1 1 0 0 0 8 5.14Z" />
+                    </svg>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void handleEditLoop(savedLoop)}
+                    title="Edit loop"
+                    aria-label="Edit loop"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
+                      <path d="M12 20h9" />
+                      <path d="m16.5 3.5 4 4L7 21H3v-4L16.5 3.5Z" />
                     </svg>
                   </Button>
                   <Button

@@ -12,6 +12,7 @@ interface MainWorkspaceProps {
   onReset: () => void;
   onTranspose: (semitones: number) => void;
   onSave: () => void;
+  onAdd: () => void;
   canUndo: boolean;
   canRedo: boolean;
   hasUnsavedChanges: boolean;
@@ -26,6 +27,7 @@ export function MainWorkspace({
   onReset,
   onTranspose,
   onSave,
+  onAdd,
   canUndo,
   canRedo,
   hasUnsavedChanges,
@@ -45,6 +47,7 @@ export function MainWorkspace({
           onReset={onReset}
           onTranspose={onTranspose}
           onSave={onSave}
+          onAdd={onAdd}
           canUndo={canUndo}
           canRedo={canRedo}
           hasUnsavedChanges={hasUnsavedChanges}

@@ -2,7 +2,7 @@ import { ControlField } from "./ControlField";
 import { LayerToggleGroup } from "./LayerToggleGroup";
 import { LoopSummary } from "./LoopSummary";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Input } from "./ui/input";
 import { Select } from "./ui/select";
 import {
@@ -30,7 +30,6 @@ interface LeftSidebarProps {
   onUpdateLayers: (layers: LayerToggles) => void;
   onAutoplayChange: (autoplay: boolean) => void;
   onGenerate: () => void;
-  onSaveLoop: () => void;
   onPlay: () => void;
   onStop: () => void;
   onExportMidi: () => void;
@@ -54,7 +53,6 @@ export function LeftSidebar({
   onUpdateLayers,
   onAutoplayChange,
   onGenerate,
-  onSaveLoop,
   onPlay,
   onStop,
   onExportMidi,
@@ -71,7 +69,6 @@ export function LeftSidebar({
         <Card>
           <CardHeader className="pb-4">
             <CardTitle>Generator Settings</CardTitle>
-            <CardDescription>Shape a quick harmonic idea before generating a new loop.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
@@ -141,9 +138,6 @@ export function LeftSidebar({
             <div className="rounded-lg border border-border bg-white/45 p-3 dark:bg-white/5">
               <div className="mb-3">
                 <p className="m-0 text-sm font-semibold text-foreground">Bass / Melody Sequence</p>
-                <p className="m-0 mt-1 text-xs text-muted-foreground">
-                  Shape the internal rhythm engine for the generated bass and melody layers.
-                </p>
               </div>
               <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
                 <ControlField label="Pattern Length" htmlFor="pattern-length">
@@ -286,10 +280,9 @@ export function LeftSidebar({
         <Card>
           <CardHeader className="pb-4">
             <CardTitle>Layers</CardTitle>
-            <CardDescription>Enable the musical parts you want the next loop to generate.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ControlField label="Active Layers" hint="At least one layer must be enabled">
+            <ControlField label="Active Layers">
               <LayerToggleGroup value={settings.layers} onChange={onUpdateLayers} />
             </ControlField>
             <div className="mt-4">
@@ -302,7 +295,6 @@ export function LeftSidebar({
       <Card>
         <CardHeader className="pb-4">
           <CardTitle>Actions</CardTitle>
-          <CardDescription>Use the existing transport and export actions while the workflow evolves.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-nowrap items-center gap-3 overflow-x-auto">
@@ -313,19 +305,6 @@ export function LeftSidebar({
                 <circle cx="15" cy="9" r="1" fill="currentColor" stroke="none" />
                 <circle cx="9" cy="15" r="1" fill="currentColor" stroke="none" />
                 <circle cx="15" cy="15" r="1" fill="currentColor" stroke="none" />
-              </svg>
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={onSaveLoop}
-              disabled={!hasCurrentLoop}
-              className="shrink-0 px-3"
-              title="Add to Library"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClassName} aria-hidden="true">
-                <path d="M12 5v14" />
-                <path d="M5 12h14" />
               </svg>
             </Button>
             <Button

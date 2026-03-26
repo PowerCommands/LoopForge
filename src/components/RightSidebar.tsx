@@ -11,6 +11,7 @@ interface RightSidebarProps {
   onRemove: (id: string) => void;
   onClearAll: () => void;
   onPlayLoop: (savedLoop: SavedLoop) => void;
+  onEditLoop: (savedLoop: SavedLoop) => void;
   onArrangementNameChange: (name: string) => void;
   onArrangementUrlChange: (url: string) => void;
   onPlayArrangement: () => void;
@@ -31,6 +32,7 @@ export function RightSidebar(props: RightSidebarProps) {
         onRemove={props.onRemove}
         onClearAll={props.onClearAll}
         onPlayLoop={props.onPlayLoop}
+        onEditLoop={props.onEditLoop}
         onArrangementNameChange={props.onArrangementNameChange}
         onArrangementUrlChange={props.onArrangementUrlChange}
         onPlayArrangement={props.onPlayArrangement}

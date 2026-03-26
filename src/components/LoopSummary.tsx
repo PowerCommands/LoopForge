@@ -25,6 +25,7 @@ export function LoopSummary({ loop, compact = false }: LoopSummaryProps) {
       </p>
       <ul className={`m-0 text-sm text-muted-foreground ${compact ? "space-y-1.5 pl-5" : "space-y-2 pl-5"}`}>
         <li>Tempo: {loop.settings.tempo} BPM</li>
+        <li>Section: {formatSectionLabel(loop.settings.section)}</li>
         <li>
           Chord progression:{" "}
           {loop.chords.length > 0
@@ -41,4 +42,8 @@ export function LoopSummary({ loop, compact = false }: LoopSummaryProps) {
       </ul>
     </section>
   );
+}
+
+function formatSectionLabel(section: GeneratedLoop["settings"]["section"]): string {
+  return section.charAt(0).toUpperCase() + section.slice(1);
 }

@@ -9,6 +9,7 @@ import { RightSidebar } from "./components/RightSidebar";
 import { SettingsWorkspace } from "./components/SettingsWorkspace";
 import { TopBar } from "./components/TopBar";
 import { useTheme } from "./components/ThemeProvider";
+import { TextPromptDialog } from "./components/ui/text-prompt-dialog";
 import {
   audioBufferToWavBlob,
   createArrangementWavFilename,
@@ -41,15 +42,22 @@ import {
   saveStoredArrangements,
   type StoredArrangement,
 } from "./music/arrangementLibrary";
-import { DEFAULT_SEQUENCE_SETTINGS, DEFAULT_SETTINGS, KEY_OPTIONS, normalizeLoopSettings } from "./music/constants";
+import { DEFAULT_SEQUENCE_SETTINGS, DEFAULT_SETTINGS, KEY_OPTIONS, normalizeLoopSettings, SECTION_OPTIONS } from "./music/constants";
 import { generateLoop } from "./music/generator";
 import { downloadArrangementMidi, exportLoopToMidi } from "./midi/exportMidi";
-import type { GeneratedLoop, LoopSettings, Mood, SavedLoop, ScaleType } from "./music/types";
+import type { GeneratedLoop, LoopSettings, Mood, SavedLoop, ScaleType, Section } from "./music/types";
 import { APP_STORAGE_KEYS } from "./lib/appStorage";
 import { getLoopDurationSeconds, playbackEngine } from "./playback/transport";
 
 const MOOD_OPTIONS: Mood[] = ["Balanced", "Dark", "Bright", "Sparse", "Intense", "Calm"];
 const SCALE_OPTIONS: ScaleType[] = ["Major", "Minor"];
+const SECTION_LABELS: Record<Section, string> = {
+  intro: "Intro",
+  verse: "Verse",
+  chorus: "Chorus",
+  bridge: "Bridge",
+  outro: "Outro",
+};
 const AUTOPLAY_STORAGE_KEY = "loop-forge-autoplay";
 const VOLUME_STORAGE_KEY = "loop-forge-volume";
 const SETTINGS_COOKIE_KEYS = {
@@ -58,6 +66,7 @@ const SETTINGS_COOKIE_KEYS = {
   tempo: "loop-forge-tempo",
   length: "loop-forge-length",
   mood: "loop-forge-mood",
+  section: "loop-forge-section",
   patternLength: "loop-forge-pattern-length",
   density: "loop-forge-density",
   variation: "loop-forge-variation",
@@ -87,6 +96,12 @@ interface StudioDraftState {
   arrangementUrl: string;
   editingArrangementId: string | null;
   editingSavedLoopId: string | null;
+}
+
+interface LoopNameDialogState {
+  open: boolean;
+  initialValue: string;
+  loop: GeneratedLoop | null;
 }
 
 function getCookieValue(name: string): string | null {
@@ -119,6 +134,7 @@ function getInitialSettings(): LoopSettings {
   const tempo = Number(getCookieValue(SETTINGS_COOKIE_KEYS.tempo));
   const length = Number(getCookieValue(SETTINGS_COOKIE_KEYS.length));
   const mood = getCookieValue(SETTINGS_COOKIE_KEYS.mood);
+  const section = getCookieValue(SETTINGS_COOKIE_KEYS.section);
   const patternLength = Number(getCookieValue(SETTINGS_COOKIE_KEYS.patternLength));
   const density = getCookieValue(SETTINGS_COOKIE_KEYS.density);
   const variation = getCookieValue(SETTINGS_COOKIE_KEYS.variation);
@@ -133,6 +149,7 @@ function getInitialSettings(): LoopSettings {
     tempo: Number.isFinite(tempo) && tempo >= 60 && tempo <= 180 ? tempo : DEFAULT_SETTINGS.tempo,
     length: length === 2 || length === 4 ? length : DEFAULT_SETTINGS.length,
     mood: mood && MOOD_OPTIONS.includes(mood as Mood) ? (mood as Mood) : DEFAULT_SETTINGS.mood,
+    section: section && SECTION_OPTIONS.includes(section as Section) ? (section as Section) : DEFAULT_SETTINGS.section,
     layers: DEFAULT_SETTINGS.layers,
     sequence: {
       patternLength: patternLength === 8 || patternLength === 16 ? patternLength : DEFAULT_SEQUENCE_SETTINGS.patternLength,
@@ -285,6 +302,11 @@ export default function App() {
   const [isExportingWav, setIsExportingWav] = useState(false);
   const [wavExportStatus, setWavExportStatus] = useState<string | null>(null);
   const [hasWavExportError, setHasWavExportError] = useState(false);
+  const [loopNameDialog, setLoopNameDialog] = useState<LoopNameDialogState>({
+    open: false,
+    initialValue: "",
+    loop: null,
+  });
   const playbackTimeoutRef = useRef<number | null>(null);
   const currentLoop = useMemo(() => {
     if (!editableLoop) {
@@ -310,8 +332,10 @@ export default function App() {
     const scale = currentLoop?.settings.scale ?? settings.scale;
     const tempo = settings.tempo;
 
-    return `${key} ${scale} • ${tempo} BPM`;
-  }, [currentLoop, settings.key, settings.scale, settings.tempo]);
+    const section = currentLoop?.settings.section ?? settings.section;
+
+    return `${key} ${scale} • ${tempo} BPM • ${SECTION_LABELS[section]}`;
+  }, [currentLoop, settings.key, settings.scale, settings.section, settings.tempo]);
 
   useEffect(() => {
     playbackEngine.setTempo(settings.tempo);
@@ -332,6 +356,7 @@ export default function App() {
     setCookieValue(SETTINGS_COOKIE_KEYS.tempo, String(settings.tempo));
     setCookieValue(SETTINGS_COOKIE_KEYS.length, String(settings.length));
     setCookieValue(SETTINGS_COOKIE_KEYS.mood, settings.mood);
+    setCookieValue(SETTINGS_COOKIE_KEYS.section, settings.section);
     setCookieValue(SETTINGS_COOKIE_KEYS.patternLength, String(settings.sequence.patternLength));
     setCookieValue(SETTINGS_COOKIE_KEYS.density, settings.sequence.density);
     setCookieValue(SETTINGS_COOKIE_KEYS.variation, settings.sequence.variation);
@@ -345,6 +370,7 @@ export default function App() {
     settings.tempo,
     settings.length,
     settings.mood,
+    settings.section,
     settings.sequence.patternLength,
     settings.sequence.density,
     settings.sequence.variation,
@@ -549,33 +575,43 @@ export default function App() {
     }
   };
 
-  const promptLoopName = (defaultName: string) => {
-    const providedName = window.prompt("Loop name", defaultName)?.trim() ?? "";
-    return providedName.length > 0 ? providedName : defaultName;
+  const closeLoopNameDialog = () => {
+    setLoopNameDialog({
+      open: false,
+      initialValue: "",
+      loop: null,
+    });
   };
 
-  const appendCurrentLoopToArrangement = () => {
-    if (!currentLoop) {
-      return null;
-    }
-
-    const name = promptLoopName(getDefaultLoopName(savedLoops));
-    const nextSavedLoop = createSavedLoop(currentLoop, name);
+  const appendLoopToArrangement = (loopToSave: GeneratedLoop, name: string) => {
+    const nextSavedLoop = createSavedLoop(loopToSave, name);
     setSavedLoops((current) => [...current, nextSavedLoop]);
     return nextSavedLoop;
   };
 
   const handleAddLoop = () => {
-    const nextSavedLoop = appendCurrentLoopToArrangement();
-
-    if (!nextSavedLoop) {
+    if (!currentLoop) {
       return;
     }
 
+    setLoopNameDialog({
+      open: true,
+      initialValue: getDefaultLoopName(savedLoops),
+      loop: cloneGeneratedLoop(currentLoop),
+    });
+  };
+
+  const handleSubmitLoopName = (name: string) => {
+    if (!loopNameDialog.loop) {
+      return;
+    }
+
+    const nextSavedLoop = appendLoopToArrangement(loopNameDialog.loop, name);
     setSavedEditableLoop(cloneEditableLoop(editableLoop));
     setUndoStack([]);
     setRedoStack([]);
     setEditingSavedLoopId(nextSavedLoop.id);
+    closeLoopNameDialog();
   };
 
   const handleRenameSavedLoop = (id: string, name: string) => {
@@ -816,98 +852,112 @@ export default function App() {
   };
 
   return (
-    <AppShell
-      topBar={
-        <TopBar
-          status={topBarStatus}
-          volume={volume}
-          activeView={activeView}
-          onVolumeChange={setVolume}
-          onViewChange={setActiveView}
-        />
-      }
-      content={
-        activeView === "library" ? (
-          <ArrangementLibraryView
-            arrangements={storedArrangements}
-            onExportArrangement={handleExportArrangement}
-            onPlayLoop={handlePreviewLibraryLoop}
-            onEdit={handleEditArrangement}
-            onDelete={handleDeleteArrangement}
+    <>
+      <AppShell
+        topBar={
+          <TopBar
+            status={topBarStatus}
+            volume={volume}
+            activeView={activeView}
+            onVolumeChange={setVolume}
+            onViewChange={setActiveView}
           />
-        ) : activeView === "lyrics" ? (
-          <LyricsWorkspace arrangements={storedArrangements} onArrangementLyricsChange={handleArrangementLyricsChange} />
-        ) : activeView === "settings" ? (
-          <SettingsWorkspace arrangements={storedArrangements} onStorageChanged={handleStorageChanged} />
-        ) : activeView === "help" ? (
-          <HelpWorkspace />
-        ) : undefined
-      }
-      leftSidebar={
-        activeView === "studio" ? (
-          <LeftSidebar
-            settings={settings}
-            loop={savedCurrentLoop}
-            keyOptions={KEY_OPTIONS}
-            scaleOptions={SCALE_OPTIONS}
-            moodOptions={MOOD_OPTIONS}
-            canGenerate={canGenerate}
-            hasCurrentLoop={Boolean(savedCurrentLoop)}
-            isPlaying={isPlaying}
-            autoplay={autoplay}
-            onUpdateSetting={updateSettings}
-            onUpdateLayers={(layers) => updateSettings("layers", layers)}
-            onAutoplayChange={setAutoplay}
-            onGenerate={handleGenerate}
-            onPlay={handlePlay}
-            onStop={handleStop}
-            onExportMidi={handleExport}
-            onExportWav={handleExportWav}
-            isExportingWav={isExportingWav}
-            wavExportStatus={wavExportStatus}
-            wavExportError={hasWavExportError}
-          />
-        ) : null
-      }
-      mainWorkspace={
-        activeView === "studio" ? (
-          <MainWorkspace
-            loop={currentLoop}
-            editableLoop={editableLoop}
-            onLoopChange={handleCurrentLoopChange}
-            onUndo={handleCurrentLoopUndo}
-            onRedo={handleCurrentLoopRedo}
-            onReset={handleCurrentLoopReset}
-            onTranspose={handleCurrentLoopTranspose}
-            onSave={handleCurrentLoopSave}
-            onAdd={handleAddLoop}
-            canUndo={undoStack.length > 0}
-            canRedo={redoStack.length > 0}
-            hasUnsavedChanges={!editableLoopsEqual(editableLoop, savedEditableLoop)}
-          />
-        ) : null
-      }
-      rightSidebar={
-        activeView === "studio" ? (
-          <RightSidebar
-            savedLoops={savedLoops}
-            arrangementName={arrangementName}
-            arrangementUrl={arrangementUrl}
-            isEditingArrangement={editingArrangementId !== null}
-            onRename={handleRenameSavedLoop}
-            onReorder={handleReorderSavedLoops}
-            onRemove={handleRemoveSavedLoop}
-            onClearAll={handleClearSavedLoops}
-            onPlayLoop={handlePreviewSavedLoop}
-            onEditLoop={handleEditSavedLoop}
-            onArrangementNameChange={setArrangementName}
-            onArrangementUrlChange={setArrangementUrl}
-            onPlayArrangement={handlePlayArrangement}
-            onStopArrangement={handleStop}
-            onSaveArrangement={handleSaveArrangement}
-          />
-        ) : null
-      }
-    />
+        }
+        content={
+          activeView === "library" ? (
+            <ArrangementLibraryView
+              arrangements={storedArrangements}
+              onExportArrangement={handleExportArrangement}
+              onPlayLoop={handlePreviewLibraryLoop}
+              onEdit={handleEditArrangement}
+              onDelete={handleDeleteArrangement}
+            />
+          ) : activeView === "lyrics" ? (
+            <LyricsWorkspace arrangements={storedArrangements} onArrangementLyricsChange={handleArrangementLyricsChange} />
+          ) : activeView === "settings" ? (
+            <SettingsWorkspace arrangements={storedArrangements} onStorageChanged={handleStorageChanged} />
+          ) : activeView === "help" ? (
+            <HelpWorkspace />
+          ) : undefined
+        }
+        leftSidebar={
+          activeView === "studio" ? (
+            <LeftSidebar
+              settings={settings}
+              loop={savedCurrentLoop}
+              keyOptions={KEY_OPTIONS}
+              scaleOptions={SCALE_OPTIONS}
+              moodOptions={MOOD_OPTIONS}
+              sectionOptions={SECTION_OPTIONS.map((section) => ({ value: section, label: SECTION_LABELS[section] }))}
+              canGenerate={canGenerate}
+              hasCurrentLoop={Boolean(savedCurrentLoop)}
+              isPlaying={isPlaying}
+              autoplay={autoplay}
+              onUpdateSetting={updateSettings}
+              onUpdateLayers={(layers) => updateSettings("layers", layers)}
+              onAutoplayChange={setAutoplay}
+              onGenerate={handleGenerate}
+              onPlay={handlePlay}
+              onStop={handleStop}
+              onExportMidi={handleExport}
+              onExportWav={handleExportWav}
+              isExportingWav={isExportingWav}
+              wavExportStatus={wavExportStatus}
+              wavExportError={hasWavExportError}
+            />
+          ) : null
+        }
+        mainWorkspace={
+          activeView === "studio" ? (
+            <MainWorkspace
+              loop={currentLoop}
+              editableLoop={editableLoop}
+              onLoopChange={handleCurrentLoopChange}
+              onUndo={handleCurrentLoopUndo}
+              onRedo={handleCurrentLoopRedo}
+              onReset={handleCurrentLoopReset}
+              onTranspose={handleCurrentLoopTranspose}
+              onSave={handleCurrentLoopSave}
+              onAdd={handleAddLoop}
+              canUndo={undoStack.length > 0}
+              canRedo={redoStack.length > 0}
+              hasUnsavedChanges={!editableLoopsEqual(editableLoop, savedEditableLoop)}
+            />
+          ) : null
+        }
+        rightSidebar={
+          activeView === "studio" ? (
+            <RightSidebar
+              savedLoops={savedLoops}
+              arrangementName={arrangementName}
+              arrangementUrl={arrangementUrl}
+              isEditingArrangement={editingArrangementId !== null}
+              onRename={handleRenameSavedLoop}
+              onReorder={handleReorderSavedLoops}
+              onRemove={handleRemoveSavedLoop}
+              onClearAll={handleClearSavedLoops}
+              onPlayLoop={handlePreviewSavedLoop}
+              onEditLoop={handleEditSavedLoop}
+              onArrangementNameChange={setArrangementName}
+              onArrangementUrlChange={setArrangementUrl}
+              onPlayArrangement={handlePlayArrangement}
+              onStopArrangement={handleStop}
+              onSaveArrangement={handleSaveArrangement}
+            />
+          ) : null
+        }
+      />
+      <TextPromptDialog
+        open={loopNameDialog.open}
+        title="Name This Loop"
+        description="Choose a clear name before adding the loop to your arrangement. Playback can keep running while you do this."
+        label="Loop name"
+        initialValue={loopNameDialog.initialValue}
+        submitLabel="Add Loop"
+        placeholder="Example: Chorus Lift"
+        onClose={closeLoopNameDialog}
+        onSubmit={handleSubmitLoopName}
+      />
+    </>
   );
 }

@@ -14,7 +14,12 @@ import {
   SEQUENCE_STYLE_OPTIONS,
   SEQUENCE_VARIATION_OPTIONS,
 } from "../music/constants";
-import type { GeneratedLoop, LoopSettings, Mood, ScaleType, LayerToggles } from "../music/types";
+import type { GeneratedLoop, LoopSettings, Mood, ScaleType, LayerToggles, Section } from "../music/types";
+
+interface SectionOption {
+  value: Section;
+  label: string;
+}
 
 interface LeftSidebarProps {
   settings: LoopSettings;
@@ -22,6 +27,7 @@ interface LeftSidebarProps {
   keyOptions: readonly string[];
   scaleOptions: readonly ScaleType[];
   moodOptions: readonly Mood[];
+  sectionOptions: readonly SectionOption[];
   canGenerate: boolean;
   hasCurrentLoop: boolean;
   isPlaying: boolean;
@@ -45,6 +51,7 @@ export function LeftSidebar({
   keyOptions,
   scaleOptions,
   moodOptions,
+  sectionOptions,
   canGenerate,
   hasCurrentLoop,
   isPlaying,
@@ -130,6 +137,20 @@ export function LeftSidebar({
                 {moodOptions.map((mood) => (
                   <option key={mood} value={mood}>
                     {mood}
+                  </option>
+                ))}
+              </Select>
+            </ControlField>
+
+            <ControlField label="Section" htmlFor="section" hint="Shapes the loop for its role in a song.">
+              <Select
+                id="section"
+                value={settings.section}
+                onChange={(event) => onUpdateSetting("section", event.target.value as Section)}
+              >
+                {sectionOptions.map((section) => (
+                  <option key={section.value} value={section.value}>
+                    {section.label}
                   </option>
                 ))}
               </Select>

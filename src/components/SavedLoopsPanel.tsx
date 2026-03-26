@@ -38,7 +38,8 @@ export function SavedLoopsPanel({ savedLoops, onPlayLoop }: SavedLoopsPanelProps
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {savedLoop.loop.settings.key} {savedLoop.loop.settings.scale} · {savedLoop.loop.settings.tempo} BPM ·{" "}
-                  {savedLoop.loop.settings.mood}
+                  {savedLoop.loop.settings.mood} ·{" "}
+                  {savedLoop.loop.settings.section.charAt(0).toUpperCase() + savedLoop.loop.settings.section.slice(1)}
                 </p>
                 <div className="mt-3">
                   <Button type="button" variant="secondary" size="sm" onClick={() => onPlayLoop(savedLoop)} title="Play loop" aria-label="Play loop">

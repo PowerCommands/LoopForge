@@ -8,6 +8,7 @@ import type {
   LoopSettings,
   Mood,
   ScaleType,
+  Section,
   SequenceEvolution,
   TimedNote,
 } from "./types";
@@ -60,6 +61,25 @@ interface EvolutionBarContext {
   barIndex: number;
   totalBars: number;
   evolution: SequenceEvolution;
+}
+
+interface SectionProfile {
+  melodyDensityMultiplier: number;
+  bassDensityMultiplier: number;
+  chordDensityMultiplier: number;
+  contourChangeMultiplier: number;
+  contourMotionLimit: number;
+  rhythmOffsetBeats: number;
+  melodyDurationMultiplier: number;
+  bassDurationMultiplier: number;
+  melodyVelocityOffset: number;
+  bassVelocityOffset: number;
+  repetitionChance: number;
+  melodicHoldChance: number;
+  repeatPitchChance: number;
+  wideRangeChance: number;
+  bassPassingChanceMultiplier: number;
+  chordStyle: "baseline" | "held" | "driving" | "anticipation";
 }
 
 const MAJOR_DEGREE_ORDER: RomanDegree[] = ["I", "ii", "iii", "IV", "V", "vi", "vii"];
@@ -194,20 +214,198 @@ const VARIATION_CHANGE_CHANCE = {
   high: 0.5,
 } as const;
 
+const SECTION_PROFILES: Record<Section, SectionProfile> = {
+  intro: {
+    melodyDensityMultiplier: 0.72,
+    bassDensityMultiplier: 0.8,
+    chordDensityMultiplier: 0.8,
+    contourChangeMultiplier: 0.7,
+    contourMotionLimit: 2,
+    rhythmOffsetBeats: 0,
+    melodyDurationMultiplier: 1.15,
+    bassDurationMultiplier: 1.1,
+    melodyVelocityOffset: -0.04,
+    bassVelocityOffset: -0.03,
+    repetitionChance: 0.32,
+    melodicHoldChance: 0.18,
+    repeatPitchChance: 0.12,
+    wideRangeChance: 0.08,
+    bassPassingChanceMultiplier: 0.65,
+    chordStyle: "held",
+  },
+  verse: {
+    melodyDensityMultiplier: 1,
+    bassDensityMultiplier: 1,
+    chordDensityMultiplier: 1,
+    contourChangeMultiplier: 1,
+    contourMotionLimit: 4,
+    rhythmOffsetBeats: 0,
+    melodyDurationMultiplier: 1,
+    bassDurationMultiplier: 1,
+    melodyVelocityOffset: 0,
+    bassVelocityOffset: 0,
+    repetitionChance: 0,
+    melodicHoldChance: 0,
+    repeatPitchChance: 0,
+    wideRangeChance: 0,
+    bassPassingChanceMultiplier: 1,
+    chordStyle: "baseline",
+  },
+  chorus: {
+    melodyDensityMultiplier: 1.2,
+    bassDensityMultiplier: 1.12,
+    chordDensityMultiplier: 1.18,
+    contourChangeMultiplier: 1.08,
+    contourMotionLimit: 5,
+    rhythmOffsetBeats: 0.125,
+    melodyDurationMultiplier: 0.92,
+    bassDurationMultiplier: 0.94,
+    melodyVelocityOffset: 0.04,
+    bassVelocityOffset: 0.03,
+    repetitionChance: 0.22,
+    melodicHoldChance: 0,
+    repeatPitchChance: 0.18,
+    wideRangeChance: 0.3,
+    bassPassingChanceMultiplier: 1.15,
+    chordStyle: "driving",
+  },
+  bridge: {
+    melodyDensityMultiplier: 1.08,
+    bassDensityMultiplier: 1.02,
+    chordDensityMultiplier: 1.08,
+    contourChangeMultiplier: 1.28,
+    contourMotionLimit: 5,
+    rhythmOffsetBeats: 0.25,
+    melodyDurationMultiplier: 0.9,
+    bassDurationMultiplier: 0.95,
+    melodyVelocityOffset: 0.01,
+    bassVelocityOffset: 0.01,
+    repetitionChance: 0.08,
+    melodicHoldChance: 0,
+    repeatPitchChance: 0.06,
+    wideRangeChance: 0.35,
+    bassPassingChanceMultiplier: 1.2,
+    chordStyle: "anticipation",
+  },
+  outro: {
+    melodyDensityMultiplier: 0.68,
+    bassDensityMultiplier: 0.72,
+    chordDensityMultiplier: 0.78,
+    contourChangeMultiplier: 0.65,
+    contourMotionLimit: 2,
+    rhythmOffsetBeats: 0,
+    melodyDurationMultiplier: 1.25,
+    bassDurationMultiplier: 1.2,
+    melodyVelocityOffset: -0.05,
+    bassVelocityOffset: -0.04,
+    repetitionChance: 0.26,
+    melodicHoldChance: 0.24,
+    repeatPitchChance: 0.1,
+    wideRangeChance: 0.06,
+    bassPassingChanceMultiplier: 0.6,
+    chordStyle: "held",
+  },
+};
+
 export function generateLoop(settings: LoopSettings): GeneratedLoop {
   const profile = MOOD_PROFILES[settings.mood];
+  const sectionProfile = getSectionProfile(settings.section);
   const scaleNotes = getScaleNotes(settings.key, settings.scale);
   const degreeChords = getDegreeChords(scaleNotes, settings.scale);
-  const progression = buildProgression(degreeChords, settings.scale, settings.mood, settings.length);
+  const progression = buildProgression(degreeChords, settings.scale, settings.mood, settings.length, settings.section);
 
   return {
     id: `${Date.now()}`,
     settings,
     totalBeats: settings.length * 4,
     chords: settings.layers.chords ? progression : [],
-    melody: settings.layers.melody ? buildMelody(progression, scaleNotes, settings, profile) : [],
-    bass: settings.layers.bass ? buildBass(progression, scaleNotes, settings, profile) : [],
+    melody: settings.layers.melody ? buildMelody(progression, scaleNotes, settings, profile, sectionProfile) : [],
+    bass: settings.layers.bass ? buildBass(progression, scaleNotes, settings, profile, sectionProfile) : [],
   };
+}
+
+function getSectionProfile(section: Section): SectionProfile {
+  return SECTION_PROFILES[section];
+}
+
+function applySectionChordRhythm(progression: ChordEvent[], sectionProfile: SectionProfile): ChordEvent[] {
+  switch (sectionProfile.chordStyle) {
+    case "driving":
+      return progression.flatMap((chord) => [
+        { ...chord, duration: 2 },
+        { ...chord, time: chord.time + 2, duration: 2 },
+      ]);
+    case "anticipation":
+      return progression.flatMap((chord, index) => {
+        const nextChord = progression[index + 1];
+
+        if (!nextChord) {
+          return chord;
+        }
+
+        return [
+          { ...chord, duration: 2 },
+          {
+            ...nextChord,
+            bar: chord.bar,
+            time: chord.time + 2,
+            duration: 2,
+          },
+        ];
+      });
+    case "held":
+    case "baseline":
+    default:
+      return progression;
+  }
+}
+
+function reshapeWindowsByDensity(
+  windows: SequenceRenderWindow[],
+  densityMultiplier: number,
+  settings: LoopSettings,
+  layer: "melody" | "bass",
+): SequenceRenderWindow[] {
+  if (windows.length <= 1 || Math.abs(densityMultiplier - 1) < 0.01) {
+    return windows;
+  }
+
+  const minimumDuration = settings.sequence.groove === "triplet" ? 2 / 3 : 0.5;
+  const targetCount = Math.max(1, Math.round(windows.length * densityMultiplier));
+
+  if (targetCount < windows.length) {
+    const ranked = [...windows]
+      .map((window, index) => ({
+        window,
+        score: (isStrongAccent(window.time % 4) ? 3 : 0) + window.duration + (index === 0 ? 1.5 : 0),
+      }))
+      .sort((left, right) => right.score - left.score)
+      .slice(0, targetCount)
+      .map(({ window }) => window)
+      .sort((left, right) => left.time - right.time);
+
+    return normalizeSequenceRenderWindows(ranked);
+  }
+
+  const expanded = [...windows];
+  let splitsRemaining = targetCount - windows.length;
+
+  for (const window of [...windows].sort((left, right) => right.duration - left.duration)) {
+    if (splitsRemaining <= 0 || window.duration < minimumDuration) {
+      continue;
+    }
+
+    const splitPoint = layer === "bass" ? window.duration * 0.5 : window.duration * 0.45;
+    expanded.push({
+      ...window,
+      time: window.time + splitPoint,
+      duration: Math.max(0.2, window.duration - splitPoint),
+    });
+    window.duration = Math.max(0.2, splitPoint);
+    splitsRemaining -= 1;
+  }
+
+  return normalizeSequenceRenderWindows(expanded);
 }
 
 function getScaleNotes(key: string, scale: ScaleType): string[] {
@@ -226,11 +424,12 @@ function buildProgression(
   scale: ScaleType,
   mood: Mood,
   length: LoopLength,
+  section: Section,
 ): ChordEvent[] {
   const template = pickTemplate(scale, mood);
   const degreeSequence = length === 2 ? compressTemplate(template.degrees) : template.degrees;
 
-  return degreeSequence.map((roman, index) => {
+  const progression = degreeSequence.map((roman, index) => {
     const chord = degreeChords.find((entry) => entry.roman === roman) ?? degreeChords[0];
 
     return {
@@ -242,6 +441,8 @@ function buildProgression(
       duration: 4,
     };
   });
+
+  return applySectionChordRhythm(progression, getSectionProfile(section));
 }
 
 function getDegreeChords(scaleNotes: string[], scale: ScaleType): DegreeChord[] {
@@ -280,12 +481,13 @@ function buildMelody(
   scaleNotes: string[],
   settings: LoopSettings,
   profile: MoodProfile,
+  sectionProfile: SectionProfile,
 ): TimedNote[] {
   const melody: TimedNote[] = [];
   const basePattern = createBaseSequencePattern("melody", settings.sequence);
   const totalBars = progression.length;
   const baseWindowCount = getBaseWindowCount(basePattern);
-  const motifContour = createMelodyContour(Math.max(1, baseWindowCount), settings, profile);
+  const motifContour = createMelodyContour(Math.max(1, baseWindowCount), settings, profile, sectionProfile);
   let previousPitchClass: string | null = null;
 
   progression.forEach((chord, barIndex) => {
@@ -299,13 +501,14 @@ function buildMelody(
       renderSequenceWindows(getSequenceWindows(pattern), chord, "melody", settings),
       settings,
       evolutionContext,
+      sectionProfile,
     );
 
     if (windows.length === 0) {
       return;
     }
 
-    const contour = evolveMelodyContour(motifContour, windows.length, settings, evolutionContext);
+    const contour = evolveMelodyContour(motifContour, windows.length, settings, evolutionContext, sectionProfile);
 
     windows.forEach((window, noteIndex) => {
       const beatInBar = window.time - chord.time;
@@ -321,6 +524,7 @@ function buildMelody(
         settings,
         profile,
         evolutionContext,
+        sectionProfile,
       );
 
       previousPitchClass = Note.pitchClass(note);
@@ -328,8 +532,8 @@ function buildMelody(
       melody.push({
         note,
         time: window.time,
-        duration: Math.max(0.2, window.duration),
-        velocity: chooseMelodyVelocity(beatInBar, noteIndex, settings, profile, evolutionContext),
+        duration: Math.max(0.2, window.duration * sectionProfile.melodyDurationMultiplier),
+        velocity: chooseMelodyVelocity(beatInBar, noteIndex, settings, profile, evolutionContext, sectionProfile),
       });
     });
   });
@@ -342,6 +546,7 @@ function buildBass(
   scaleNotes: string[],
   settings: LoopSettings,
   profile: MoodProfile,
+  sectionProfile: SectionProfile,
 ): TimedNote[] {
   const bass: TimedNote[] = [];
   const basePattern = createBaseSequencePattern("bass", settings.sequence);
@@ -359,18 +564,29 @@ function buildBass(
       chord,
       settings,
       evolutionContext,
+      sectionProfile,
     );
     const nextChord = progression[(barIndex + 1) % progression.length] ?? chord;
 
     windows.forEach((window, noteIndex) => {
       const beatInBar = window.time - chord.time;
-      const target = chooseBassTarget(chord, nextChord, scaleNotes, noteIndex, windows.length, beatInBar, settings, evolutionContext);
+      const target = chooseBassTarget(
+        chord,
+        nextChord,
+        scaleNotes,
+        noteIndex,
+        windows.length,
+        beatInBar,
+        settings,
+        evolutionContext,
+        sectionProfile,
+      );
 
       bass.push({
         note: `${target.note}${target.octave}`,
         time: window.time,
-        duration: Math.max(0.2, window.duration),
-        velocity: chooseBassVelocity(beatInBar, noteIndex, profile, settings, evolutionContext),
+        duration: Math.max(0.2, window.duration * sectionProfile.bassDurationMultiplier),
+        velocity: chooseBassVelocity(beatInBar, noteIndex, profile, settings, evolutionContext, sectionProfile),
       });
     });
   });
@@ -378,20 +594,42 @@ function buildBass(
   return bass;
 }
 
-function createMelodyContour(noteCount: number, settings: LoopSettings, profile: MoodProfile): number[] {
+function createMelodyContour(
+  noteCount: number,
+  settings: LoopSettings,
+  profile: MoodProfile,
+  sectionProfile: SectionProfile,
+): number[] {
   const pool = MELODY_CONTOUR_POOLS[settings.sequence.style];
+  const contour: number[] = [];
 
-  return Array.from({ length: noteCount }, (_, index) => {
+  for (let index = 0; index < noteCount; index += 1) {
     if (index === 0) {
-      return 0;
+      contour.push(0);
+      continue;
+    }
+
+    const previousValue = contour[index - 1] ?? 0;
+
+    if (Math.random() < sectionProfile.repetitionChance) {
+      contour.push(previousValue);
+      continue;
+    }
+
+    if (Math.random() < sectionProfile.melodicHoldChance) {
+      contour.push(0);
+      continue;
     }
 
     if (Math.random() < profile.melodyStepwiseChance) {
-      return pickRandom([0, 1, -1, 1, -1, 2, -2]);
+      contour.push(clampContourMotion(pickRandom([0, 1, -1, 1, -1, 2, -2]), sectionProfile.contourMotionLimit));
+      continue;
     }
 
-    return pickRandom([...pool]);
-  });
+    contour.push(clampContourMotion(pickRandom([...pool]), sectionProfile.contourMotionLimit));
+  }
+
+  return contour;
 }
 
 function getBaseWindowCount(basePattern: ReturnType<typeof createBaseSequencePattern>): number {
@@ -403,18 +641,28 @@ function evolveMelodyContour(
   noteCount: number,
   settings: LoopSettings,
   context: EvolutionBarContext,
+  sectionProfile: SectionProfile,
 ): number[] {
   if (context.barIndex === 0) {
     return Array.from({ length: noteCount }, (_, index) => baseContour[index % baseContour.length] ?? 0);
   }
 
-  const seededContour = varyMelodyContour(baseContour, noteCount, settings, getContourChangeChance(settings, context));
+  const seededContour = varyMelodyContour(
+    baseContour,
+    noteCount,
+    settings,
+    getContourChangeChance(settings, context, sectionProfile),
+    sectionProfile,
+  );
   const progress = getEvolutionProgress(context);
 
   switch (context.evolution) {
     case "subtle variation":
       if (context.barIndex === context.totalBars - 1 && seededContour.length > 0) {
-        seededContour[seededContour.length - 1] = clampContourMotion((seededContour[seededContour.length - 1] ?? 0) + 1);
+        seededContour[seededContour.length - 1] = clampContourMotion(
+          (seededContour[seededContour.length - 1] ?? 0) + 1,
+          sectionProfile.contourMotionLimit,
+        );
       }
       return seededContour;
     case "developing":
@@ -424,10 +672,10 @@ function evolveMelodyContour(
         }
 
         const growth = index >= Math.floor(seededContour.length / 2) ? Math.round(progress * 2) : 0;
-        return clampContourMotion(value + growth);
+        return clampContourMotion(value + growth, sectionProfile.contourMotionLimit);
       });
     case "call & response":
-      return createCallResponseContour(seededContour, context);
+      return createCallResponseContour(seededContour, context, sectionProfile.contourMotionLimit);
     case "static":
     default:
       return seededContour;
@@ -439,6 +687,7 @@ function varyMelodyContour(
   noteCount: number,
   settings: LoopSettings,
   changeChance: number,
+  sectionProfile: SectionProfile,
 ): number[] {
   const pool = MELODY_CONTOUR_POOLS[settings.sequence.style];
 
@@ -449,28 +698,36 @@ function varyMelodyContour(
       return 0;
     }
 
-    if (Math.random() < changeChance) {
-      return pickRandom([...pool]);
+    if (index > 0 && Math.random() < sectionProfile.repetitionChance) {
+      return baseContour[(index - 1) % baseContour.length] ?? 0;
     }
 
-    return baseValue;
+    if (Math.random() < changeChance) {
+      return clampContourMotion(pickRandom([...pool]), sectionProfile.contourMotionLimit);
+    }
+
+    return clampContourMotion(baseValue, sectionProfile.contourMotionLimit);
   });
 }
 
-function getContourChangeChance(settings: LoopSettings, context: EvolutionBarContext): number {
+function getContourChangeChance(
+  settings: LoopSettings,
+  context: EvolutionBarContext,
+  sectionProfile: SectionProfile,
+): number {
   const baseChance = VARIATION_CHANGE_CHANCE[settings.sequence.variation];
   const progress = getEvolutionProgress(context);
 
   switch (context.evolution) {
     case "subtle variation":
-      return clampProbability(baseChance * 0.75 + progress * 0.08);
+      return clampProbability((baseChance * 0.75 + progress * 0.08) * sectionProfile.contourChangeMultiplier);
     case "developing":
-      return clampProbability(baseChance + 0.12 + progress * 0.18);
+      return clampProbability((baseChance + 0.12 + progress * 0.18) * sectionProfile.contourChangeMultiplier);
     case "call & response":
-      return clampProbability(baseChance + (context.barIndex % 2 === 1 ? 0.12 : 0.04));
+      return clampProbability((baseChance + (context.barIndex % 2 === 1 ? 0.12 : 0.04)) * sectionProfile.contourChangeMultiplier);
     case "static":
     default:
-      return baseChance;
+      return clampProbability(baseChance * sectionProfile.contourChangeMultiplier);
   }
 }
 
@@ -478,8 +735,9 @@ function evolveMelodyWindows(
   windows: SequenceRenderWindow[],
   settings: LoopSettings,
   context: EvolutionBarContext,
+  sectionProfile: SectionProfile,
 ): SequenceRenderWindow[] {
-  if (windows.length === 0 || context.evolution === "static") {
+  if (windows.length === 0) {
     return windows;
   }
 
@@ -504,6 +762,11 @@ function evolveMelodyWindows(
       nextDuration = Math.max(0.2, window.duration * 0.82);
     }
 
+    if (sectionProfile.rhythmOffsetBeats > 0 && index > 0 && !isStrongAccent(window.time - Math.floor(window.time / 4) * 4)) {
+      const sectionDelay = context.barIndex % 2 === 1 ? sectionProfile.rhythmOffsetBeats : sectionProfile.rhythmOffsetBeats * 0.5;
+      nextTime = Math.min(Math.floor(window.time / 4) * 4 + 3.75, nextTime + sectionDelay);
+    }
+
     return {
       ...window,
       time: nextTime,
@@ -511,7 +774,7 @@ function evolveMelodyWindows(
     };
   });
 
-  return normalizeSequenceRenderWindows(evolved);
+  return reshapeWindowsByDensity(normalizeSequenceRenderWindows(evolved), sectionProfile.melodyDensityMultiplier, settings, "melody");
 }
 
 function evolveBassWindows(
@@ -519,8 +782,9 @@ function evolveBassWindows(
   chord: ChordEvent,
   settings: LoopSettings,
   context: EvolutionBarContext,
+  sectionProfile: SectionProfile,
 ): SequenceRenderWindow[] {
-  if (windows.length === 0 || context.evolution === "static") {
+  if (windows.length === 0) {
     return windows;
   }
 
@@ -547,18 +811,27 @@ function evolveBassWindows(
       };
     }
 
+    if (sectionProfile.rhythmOffsetBeats > 0 && index > 0 && !isStrongAccent(window.time - chord.time)) {
+      return {
+        ...window,
+        time: Math.min(chord.time + 3.75, window.time + sectionProfile.rhythmOffsetBeats * 0.5),
+      };
+    }
+
     return window;
   });
 
-  return normalizeSequenceRenderWindows(evolved);
+  return reshapeWindowsByDensity(normalizeSequenceRenderWindows(evolved), sectionProfile.bassDensityMultiplier, settings, "bass");
 }
 
-function createCallResponseContour(contour: number[], context: EvolutionBarContext): number[] {
+function createCallResponseContour(contour: number[], context: EvolutionBarContext, contourMotionLimit: number): number[] {
   const isResponseBar = context.barIndex % 2 === 1;
 
   if (!isResponseBar) {
     if (context.barIndex >= 2) {
-      return contour.map((value, index) => (index === contour.length - 1 ? clampContourMotion(value + 1) : value));
+      return contour.map((value, index) =>
+        index === contour.length - 1 ? clampContourMotion(value + 1, contourMotionLimit) : value,
+      );
     }
 
     return contour;
@@ -569,8 +842,8 @@ function createCallResponseContour(contour: number[], context: EvolutionBarConte
       return 0;
     }
 
-    const inverted = clampContourMotion(-value || -1);
-    return index === contour.length - 1 ? clampContourMotion(inverted - 1) : inverted;
+    const inverted = clampContourMotion(-value || -1, contourMotionLimit);
+    return index === contour.length - 1 ? clampContourMotion(inverted - 1, contourMotionLimit) : inverted;
   });
 }
 
@@ -596,8 +869,8 @@ function getEvolutionProgress(context: EvolutionBarContext): number {
   return context.totalBars > 1 ? context.barIndex / (context.totalBars - 1) : 0;
 }
 
-function clampContourMotion(value: number): number {
-  return Math.max(-4, Math.min(4, value));
+function clampContourMotion(value: number, limit = 4): number {
+  return Math.max(-limit, Math.min(limit, value));
 }
 
 function chooseMelodyNote(
@@ -611,20 +884,25 @@ function chooseMelodyNote(
   settings: LoopSettings,
   profile: MoodProfile,
   context: EvolutionBarContext,
+  sectionProfile: SectionProfile,
 ): string {
   const chordTones = chord.notes.map((note) => Note.pitchClass(note));
 
   if (settings.sequence.style === "arp-like") {
     const arpTone = chordTones[noteIndex % chordTones.length] ?? chordTones[0] ?? scaleNotes[0];
     const resolvedArpTone = isStrongAccent ? arpTone : keepScaleTone(arpTone, scaleNotes);
-    return `${resolvedArpTone}${chooseMelodyOctave(noteIndex, chord.bar, contourMotion, settings, profile)}`;
+    return `${resolvedArpTone}${chooseMelodyOctave(noteIndex, chord.bar, contourMotion, settings, profile, sectionProfile)}`;
   }
 
-  if (settings.sequence.style === "pulsing" && previousPitchClass && noteIndex % 2 === 1 && Math.random() < 0.7) {
+  if (
+    previousPitchClass &&
+    ((settings.sequence.style === "pulsing" && noteIndex % 2 === 1 && Math.random() < 0.7) ||
+      Math.random() < sectionProfile.repeatPitchChance)
+  ) {
     const repeatedPitchClass = isStrongAccent
       ? resolveChordToneTarget(previousPitchClass, chordTones, scaleNotes)
       : previousPitchClass;
-    return `${repeatedPitchClass}${chooseMelodyOctave(noteIndex, chord.bar, 0, settings, profile)}`;
+    return `${repeatedPitchClass}${chooseMelodyOctave(noteIndex, chord.bar, 0, settings, profile, sectionProfile)}`;
   }
 
   const previousIndex = previousPitchClass ? scaleNotes.indexOf(previousPitchClass) : -1;
@@ -636,12 +914,13 @@ function chooseMelodyNote(
   } else if (context.evolution === "call & response" && context.barIndex % 2 === 1) {
     adjustedMotion = adjustedMotion > 0 ? -adjustedMotion : adjustedMotion - 1;
   }
+  adjustedMotion = clampContourMotion(adjustedMotion, sectionProfile.contourMotionLimit);
   const nextPitchClass = scaleNotes[wrapScaleIndex(seedIndex + adjustedMotion, scaleNotes.length)] ?? scaleNotes[0];
   const resolvedPitchClass = isStrongAccent
     ? resolveChordToneTarget(nextPitchClass, chordTones, scaleNotes)
     : keepScaleTone(nextPitchClass, scaleNotes);
 
-  return `${resolvedPitchClass}${chooseMelodyOctave(noteIndex, chord.bar, adjustedMotion, settings, profile)}`;
+  return `${resolvedPitchClass}${chooseMelodyOctave(noteIndex, chord.bar, adjustedMotion, settings, profile, sectionProfile)}`;
 }
 
 function chooseMelodyOctave(
@@ -650,6 +929,7 @@ function chooseMelodyOctave(
   contourMotion: number,
   settings: LoopSettings,
   profile: MoodProfile,
+  sectionProfile: SectionProfile,
 ): number {
   if (settings.sequence.style === "arp-like") {
     if (settings.sequence.register === "low") {
@@ -672,8 +952,12 @@ function chooseMelodyOctave(
   }
 
   if (settings.sequence.register === "wide") {
-    const widePool = [3, 4, 5, 4, 5];
+    const widePool = sectionProfile.wideRangeChance > 0.2 ? [3, 4, 5, 4, 5] : [4, 4, 5, 4];
     return widePool[(noteIndex + barIndex + Math.abs(contourMotion)) % widePool.length] ?? 4;
+  }
+
+  if (sectionProfile.wideRangeChance > 0 && settings.sequence.register === "mid" && Math.random() < sectionProfile.wideRangeChance) {
+    return contourMotion >= 0 ? 5 : 4;
   }
 
   return profile.melodyOctaves[(noteIndex + barIndex) % profile.melodyOctaves.length];
@@ -685,6 +969,7 @@ function chooseMelodyVelocity(
   settings: LoopSettings,
   profile: MoodProfile,
   context: EvolutionBarContext,
+  sectionProfile: SectionProfile,
 ): number {
   const accent = isStrongAccent(beat) ? 0.05 : -0.03;
   const styleBoost = settings.sequence.style === "syncopated" && beat % 1 !== 0 ? 0.03 : 0;
@@ -695,7 +980,7 @@ function chooseMelodyVelocity(
       : context.evolution === "call & response" && context.barIndex % 2 === 1
         ? -0.03
         : 0;
-  return clampVelocity(profile.melodyVelocity + accent + styleBoost + motifBoost + evolutionBoost);
+  return clampVelocity(profile.melodyVelocity + accent + styleBoost + motifBoost + evolutionBoost + sectionProfile.melodyVelocityOffset);
 }
 
 function chooseBassTarget(
@@ -707,6 +992,7 @@ function chooseBassTarget(
   beat: number,
   settings: LoopSettings,
   context: EvolutionBarContext,
+  sectionProfile: SectionProfile,
 ): BassTarget {
   const root = Note.pitchClass(chord.root);
   const nextRoot = Note.pitchClass(nextChord.root);
@@ -726,7 +1012,7 @@ function chooseBassTarget(
   }
 
   if (context.evolution === "call & response" && context.barIndex % 2 === 1) {
-    if (isLastWindow && root !== nextRoot && Math.random() < 0.35) {
+    if (isLastWindow && root !== nextRoot && rollWithMultiplier(0.35, sectionProfile.bassPassingChanceMultiplier)) {
       return passingTarget;
     }
 
@@ -741,7 +1027,7 @@ function chooseBassTarget(
     case "arp-like":
       return [lowRoot, thirdTarget, fifthTarget, octaveRoot][noteIndex % 4] ?? lowRoot;
     case "staccato":
-      if (isLastWindow && root !== nextRoot && Math.random() < 0.45) {
+      if (isLastWindow && root !== nextRoot && rollWithMultiplier(0.45, sectionProfile.bassPassingChanceMultiplier)) {
         return passingTarget;
       }
 
@@ -753,7 +1039,7 @@ function chooseBassTarget(
 
       return pickRandom([lowRoot, fifthTarget, octaveRoot]);
     case "syncopated":
-      if (isLastWindow && root !== nextRoot && Math.random() < 0.55) {
+      if (isLastWindow && root !== nextRoot && rollWithMultiplier(0.55, sectionProfile.bassPassingChanceMultiplier)) {
         return passingTarget;
       }
 
@@ -774,7 +1060,7 @@ function chooseBassTarget(
         return Math.random() < 0.75 ? lowRoot : fifthTarget;
       }
 
-      if (isLastWindow && root !== nextRoot && Math.random() < 0.35) {
+      if (isLastWindow && root !== nextRoot && rollWithMultiplier(0.35, sectionProfile.bassPassingChanceMultiplier)) {
         return passingTarget;
       }
 
@@ -792,6 +1078,7 @@ function chooseBassVelocity(
   profile: MoodProfile,
   settings: LoopSettings,
   context: EvolutionBarContext,
+  sectionProfile: SectionProfile,
 ): number {
   const accent = isStrongAccent(beat) ? 0.05 : -0.04;
   const styleBoost =
@@ -806,7 +1093,7 @@ function chooseBassVelocity(
       : context.evolution === "call & response" && context.barIndex % 2 === 1
         ? -0.02
         : 0;
-  return clampVelocity(profile.bassVelocity + accent + styleBoost + evolutionBoost);
+  return clampVelocity(profile.bassVelocity + accent + styleBoost + evolutionBoost + sectionProfile.bassVelocityOffset);
 }
 
 // Groove shifts rhythmic placement after the step pattern is created, while register
@@ -937,6 +1224,10 @@ function clampProbability(value: number): number {
 
 function pickRandom<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
+}
+
+function rollWithMultiplier(baseChance: number, multiplier: number): boolean {
+  return Math.random() < clampProbability(baseChance * multiplier);
 }
 
 export function getLayerSummary(loop: GeneratedLoop, layers: LayerToggles): string[] {

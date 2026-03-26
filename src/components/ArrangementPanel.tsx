@@ -132,7 +132,8 @@ export function ArrangementPanel({
                 />
                 <p className="mb-0 mt-3 text-sm text-muted-foreground">
                   {savedLoop.loop.settings.key} {savedLoop.loop.settings.scale} | {savedLoop.loop.settings.tempo} BPM |{" "}
-                  {savedLoop.loop.settings.length} bars | {savedLoop.seconds} sec | {savedLoop.loop.settings.mood}
+                  {savedLoop.loop.settings.length} bars | {savedLoop.seconds} sec | {savedLoop.loop.settings.mood} |{" "}
+                  {savedLoop.loop.settings.section.charAt(0).toUpperCase() + savedLoop.loop.settings.section.slice(1)}
                 </p>
                 <p className="mb-0 mt-2 text-sm text-muted-foreground">
                   {savedLoop.loop.chords.length > 0

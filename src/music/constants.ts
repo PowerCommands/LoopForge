@@ -1,5 +1,6 @@
 import type {
   LoopSettings,
+  Section,
   SequenceDensity,
   SequenceEvolution,
   SequenceGroove,
@@ -32,6 +33,7 @@ export const SEQUENCE_EVOLUTION_OPTIONS: SequenceEvolution[] = ["static", "subtl
 export const SEQUENCE_STYLE_OPTIONS: SequenceStyle[] = ["straight", "syncopated", "flowing", "arp-like", "staccato", "legato", "pulsing"];
 export const SEQUENCE_GROOVE_OPTIONS: SequenceGroove[] = ["straight", "swing", "triplet"];
 export const SEQUENCE_REGISTER_OPTIONS: SequenceRegister[] = ["low", "mid", "high", "wide"];
+export const SECTION_OPTIONS: Section[] = ["intro", "verse", "chorus", "bridge", "outro"];
 
 export const DEFAULT_SEQUENCE_SETTINGS: SequenceSettings = {
   patternLength: 16,
@@ -49,6 +51,7 @@ export const DEFAULT_SETTINGS: LoopSettings = {
   tempo: 110,
   length: 4,
   mood: "Balanced",
+  section: "verse",
   layers: {
     chords: true,
     melody: true,
@@ -93,6 +96,7 @@ export function normalizeLoopSettings(settings?: Partial<LoopSettings> | null): 
         : DEFAULT_SETTINGS.tempo,
     length: settings?.length === 2 || settings?.length === 4 ? settings.length : DEFAULT_SETTINGS.length,
     mood: settings?.mood ?? DEFAULT_SETTINGS.mood,
+    section: settings?.section && SECTION_OPTIONS.includes(settings.section) ? settings.section : DEFAULT_SETTINGS.section,
     layers: {
       chords: settings?.layers?.chords ?? DEFAULT_SETTINGS.layers.chords,
       melody: settings?.layers?.melody ?? DEFAULT_SETTINGS.layers.melody,

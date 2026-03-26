@@ -240,7 +240,8 @@ export function ArrangementLibraryView({ arrangements, onExportArrangement, onPl
                                     </div>
                                     <p className="mt-2 text-sm text-muted-foreground">
                                       {loop.loop.settings.key} {loop.loop.settings.scale} · {loop.loop.settings.tempo} BPM ·{" "}
-                                      {loop.loop.settings.mood}
+                                      {loop.loop.settings.mood} ·{" "}
+                                      {loop.loop.settings.section.charAt(0).toUpperCase() + loop.loop.settings.section.slice(1)}
                                     </p>
                                     <p className="mt-2 text-sm text-muted-foreground">
                                       {loop.loop.chords.length > 0

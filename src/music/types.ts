@@ -1,6 +1,7 @@
 export type ScaleType = "Major" | "Minor";
 export type Mood = "Balanced" | "Dark" | "Bright" | "Sparse" | "Intense" | "Calm";
 export type LoopLength = 2 | 4;
+export type Section = "intro" | "verse" | "chorus" | "bridge" | "outro";
 export type LayerName = "chords" | "melody" | "bass";
 export type SequencePatternLength = 8 | 16;
 export type SequenceDensity = "low" | "medium" | "high";
@@ -38,6 +39,7 @@ export interface LoopSettings {
   tempo: number;
   length: LoopLength;
   mood: Mood;
+  section: Section;
   layers: LayerToggles;
   sequence: SequenceSettings;
 }

@@ -870,8 +870,19 @@ export default function App() {
     setRedoStack([]);
   };
 
-  const handleCurrentLoopTranspose = (semitones: number) => {
-    applyEditableLoopChange(transposeEditableLoop(editableLoop, semitones));
+  const handleCurrentLoopTranspose = async (semitones: number) => {
+    const nextEditableLoop = transposeEditableLoop(editableLoop, semitones);
+    const nextGeneratedLoop = createGeneratedLoopFromEditableLoop(nextEditableLoop, settings.tempo);
+
+    applyEditableLoopChange(nextEditableLoop);
+
+    if (!isPlaying) {
+      return;
+    }
+
+    clearPlaybackTimeout();
+    await playbackEngine.play(nextGeneratedLoop);
+    setIsPlaying(true);
   };
 
   const handleCurrentLoopSave = () => {
@@ -896,8 +907,18 @@ export default function App() {
     );
   };
 
-  const handleCurrentLoopChange = (nextLoop: EditableLoop) => {
+  const handleCurrentLoopChange = async (nextLoop: EditableLoop) => {
     applyEditableLoopChange(nextLoop);
+
+    if (!isPlaying) {
+      return;
+    }
+
+    const nextGeneratedLoop = createGeneratedLoopFromEditableLoop(nextLoop, settings.tempo);
+
+    clearPlaybackTimeout();
+    await playbackEngine.play(nextGeneratedLoop);
+    setIsPlaying(true);
   };
 
   const handleDeleteArrangement = (arrangement: StoredArrangement) => {

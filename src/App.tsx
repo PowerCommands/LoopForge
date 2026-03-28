@@ -184,7 +184,12 @@ function isGeneratedLoopDraft(value: unknown): value is GeneratedLoop {
   }
 
   const candidate = value as Partial<GeneratedLoop>;
-  return Array.isArray(candidate.chords) && Array.isArray(candidate.melody) && Array.isArray(candidate.bass) && typeof candidate.id === "string";
+  return (
+    Array.isArray(candidate.chords) &&
+    Array.isArray(candidate.melody) &&
+    Array.isArray(candidate.bass) &&
+    typeof candidate.id === "string"
+  );
 }
 
 function isSavedLoopDraft(value: unknown): value is SavedLoop {

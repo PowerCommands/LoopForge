@@ -1,4 +1,5 @@
 import { Note, Scale } from "tonal";
+import { generateDrumPattern } from "../lib/generation/drumGenerator";
 import { createBaseSequencePattern, createPatternForBar, getPatternStepDuration, getSequenceWindows, type SequenceWindow } from "./sequence";
 import type {
   ChordEvent,
@@ -322,6 +323,7 @@ export function generateLoop(settings: LoopSettings): GeneratedLoop {
     chords: settings.layers.chords ? progression : [],
     melody: settings.layers.melody ? buildMelody(progression, scaleNotes, settings, profile, sectionProfile) : [],
     bass: settings.layers.bass ? buildBass(progression, scaleNotes, settings, profile, sectionProfile) : [],
+    drums: settings.layers.drums ? generateDrumPattern(settings) : [],
   };
 }
 
@@ -367,6 +369,12 @@ export function rerollGeneratedLoopLayer(existingLoop: GeneratedLoop, settings: 
         ? buildBass(progressionForSingleLayer, scaleNotes, nextSettings, profile, sectionProfile)
         : nextSettings.layers.bass
           ? existingLoop.bass
+          : [],
+    drums:
+      layer === "drums"
+        ? generateDrumPattern(nextSettings)
+        : nextSettings.layers.drums
+          ? existingLoop.drums
           : [],
   };
 }
@@ -1290,6 +1298,10 @@ export function getLayerSummary(loop: GeneratedLoop, layers: LayerToggles): stri
 
   if (layers.bass) {
     parts.push(`Bass notes: ${loop.bass.length}`);
+  }
+
+  if (layers.drums) {
+    parts.push(`Drum hits: ${loop.drums.length}`);
   }
 
   return parts;

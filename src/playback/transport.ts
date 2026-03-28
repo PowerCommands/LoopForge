@@ -1,6 +1,12 @@
 import * as Tone from "tone";
-import type { GeneratedLoop, SavedLoop, TimedNote } from "../music/types";
+import type { DrumEvent, DrumInstrument, GeneratedLoop, SavedLoop, TimedNote } from "../music/types";
 import type { ChordEvent } from "../music/types";
+import {
+  disposeDrumSampler,
+  ensureDrumSamplerLoaded,
+  getDrumSamplerRack,
+  type DrumSamplerRack,
+} from "../lib/audio/drumSampler";
 import {
   disposePianoSampler,
   ensurePianoSamplerLoaded,
@@ -10,10 +16,19 @@ import {
 
 type ScheduledChordEvent = Omit<ChordEvent, "time"> & { time: string };
 type ScheduledNoteEvent = Omit<TimedNote, "time"> & { time: string };
+type ScheduledDrumEvent = Omit<DrumEvent, "time"> & { time: string };
+
+const DRUM_NOTE_MAP: Record<DrumInstrument, string> = {
+  kick: "C1",
+  snare: "D1",
+  hihat: "F#1",
+};
 
 export interface LoopPlaybackInstrumentRack {
   output: Tone.Volume;
+  drumsOutput: Tone.Volume;
   piano: Tone.Sampler;
+  drums: Tone.Sampler;
   dispose: () => void;
 }
 
@@ -51,18 +66,24 @@ export function setRackVolume(output: Tone.Volume, volume: number): void {
 }
 
 export function createLoopPlaybackInstrumentRack(): LoopPlaybackInstrumentRack {
-  const rack: PianoSamplerRack = getPianoSamplerRack();
+  const pianoRack: PianoSamplerRack = getPianoSamplerRack();
+  const drumRack: DrumSamplerRack = getDrumSamplerRack();
 
   return {
-    output: rack.output,
-    piano: rack.sampler,
-    dispose: disposePianoSampler,
+    output: pianoRack.output,
+    drumsOutput: drumRack.output,
+    piano: pianoRack.sampler,
+    drums: drumRack.sampler,
+    dispose: () => {
+      disposePianoSampler();
+      disposeDrumSampler();
+    },
   };
 }
 
 export function createLoopParts(
   loop: GeneratedLoop,
-  rack: Pick<LoopPlaybackInstrumentRack, "piano">,
+  rack: Pick<LoopPlaybackInstrumentRack, "piano" | "drums">,
   startBeat = 0,
 ): Tone.Part[] {
   const parts: Tone.Part[] = [];
@@ -118,6 +139,24 @@ export function createLoopParts(
           note.velocity,
         );
       }, bassEvents),
+    );
+  }
+
+  if (loop.drums.length > 0) {
+    const drumEvents: ScheduledDrumEvent[] = loop.drums.map((event) => ({
+      ...event,
+      time: beatToTransportTime(event.time + startBeat),
+    }));
+
+    parts.push(
+      new Tone.Part<ScheduledDrumEvent>((time, event) => {
+        rack.drums.triggerAttackRelease(
+          DRUM_NOTE_MAP[event.instrument],
+          noteDurationToTransportTime(event.duration),
+          time,
+          event.velocity,
+        );
+      }, drumEvents),
     );
   }
 
@@ -222,6 +261,7 @@ class LoopPlaybackEngine {
 
   setVolume(volume: number): void {
     setRackVolume(this.rack.output, volume);
+    setRackVolume(this.rack.drumsOutput, volume);
   }
 
   preload(): Promise<boolean> {
@@ -244,7 +284,7 @@ class LoopPlaybackEngine {
 
   private async ensureReady(): Promise<boolean> {
     try {
-      await ensurePianoSamplerLoaded();
+      await Promise.all([ensurePianoSamplerLoaded(), ensureDrumSamplerLoaded()]);
       return true;
     } catch {
       return false;
@@ -259,6 +299,7 @@ class LoopPlaybackEngine {
     this.parts.forEach((part) => part.dispose());
     this.parts = [];
     this.rack.piano.releaseAll();
+    this.rack.drums.releaseAll();
   }
 }
 

@@ -1,9 +1,9 @@
 import { Note } from "tonal";
-import type { LayerName } from "../music/types";
+import type { NoteLayerName } from "../music/types";
 import type { EditableLoop, EditableLoopNote } from "../music/editor";
 import { PIANO_ROLL_STEPS_PER_BEAT } from "../music/editor";
 
-export type VisualizationLayer = LayerName;
+export type VisualizationLayer = NoteLayerName;
 
 export interface VisualizedNote {
   id: string;

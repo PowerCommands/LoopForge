@@ -1,10 +1,10 @@
 import { Note } from "tonal";
 import { KEY_OPTIONS } from "./constants";
-import type { ChordEvent, GeneratedLoop, LayerName, LoopSettings, TimedNote } from "./types";
+import type { ChordEvent, DrumEvent, GeneratedLoop, LoopSettings, NoteLayerName, TimedNote } from "./types";
 
 export const PIANO_ROLL_STEPS_PER_BEAT = 4;
 const DEFAULT_CHORD_VELOCITY = 0.55;
-const TRANSPOSE_LIMITS: Record<LayerName, { min: number; max: number }> = {
+const TRANSPOSE_LIMITS: Record<NoteLayerName, { min: number; max: number }> = {
   chords: { min: 36, max: 84 },
   melody: { min: 48, max: 96 },
   bass: { min: 28, max: 72 },
@@ -12,7 +12,7 @@ const TRANSPOSE_LIMITS: Record<LayerName, { min: number; max: number }> = {
 
 export interface EditableLoopNote {
   id: string;
-  layer: LayerName;
+  layer: NoteLayerName;
   pitch: number;
   startStep: number;
   durationSteps: number;
@@ -24,6 +24,7 @@ export interface EditableLoop {
   totalBeats: number;
   totalSteps: number;
   notes: EditableLoopNote[];
+  drums: DrumEvent[];
 }
 
 export function cloneEditableLoop(loop: EditableLoop): EditableLoop {
@@ -35,6 +36,7 @@ export function cloneEditableLoop(loop: EditableLoop): EditableLoop {
       sequence: { ...loop.settings.sequence },
     },
     notes: loop.notes.map((note) => ({ ...note })),
+    drums: loop.drums.map((event) => ({ ...event })),
   };
 }
 
@@ -42,7 +44,7 @@ export function editableLoopsEqual(left: EditableLoop, right: EditableLoop): boo
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function createEditableNoteId(layer: LayerName, seed: string): string {
+function createEditableNoteId(layer: NoteLayerName, seed: string): string {
   return `${layer}-edit-${seed}`;
 }
 
@@ -64,7 +66,7 @@ function transposeLoopKey(key: string, semitones: number): string {
   return KEY_OPTIONS[((chroma + semitones) % KEY_OPTIONS.length + KEY_OPTIONS.length) % KEY_OPTIONS.length] ?? key;
 }
 
-function noteToEditable(layer: LayerName, note: TimedNote, index: number): EditableLoopNote {
+function noteToEditable(layer: NoteLayerName, note: TimedNote, index: number): EditableLoopNote {
   const pitch = Note.midi(note.note) ?? 60;
 
   return {
@@ -160,6 +162,7 @@ export function createEditableLoopFromGeneratedLoop(loop: GeneratedLoop): Editab
       ...loop.melody.map((note, index) => noteToEditable("melody", note, index)),
       ...loop.bass.map((note, index) => noteToEditable("bass", note, index)),
     ],
+    drums: loop.drums.map((event) => ({ ...event })),
   };
 }
 
@@ -190,6 +193,7 @@ export function createGeneratedLoopFromEditableLoop(editableLoop: EditableLoop, 
     chords: groupChordNotes(chordNotes),
     melody,
     bass,
+    drums: editableLoop.drums.map((event) => ({ ...event })),
   };
 }
 
@@ -206,7 +210,7 @@ export function clampEditableNoteToLoop(note: EditableLoopNote, totalSteps: numb
   };
 }
 
-export function createNewEditableNote(layer: LayerName, pitch: number, startStep: number, totalSteps: number): EditableLoopNote {
+export function createNewEditableNote(layer: NoteLayerName, pitch: number, startStep: number, totalSteps: number): EditableLoopNote {
   return clampEditableNoteToLoop(
     {
       id: createEditableNoteId(layer, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
@@ -240,5 +244,6 @@ export function transposeEditableLoop(loop: EditableLoop, semitones: number): Ed
         loop.totalSteps,
       ),
     ),
+    drums: loop.drums.map((event) => ({ ...event })),
   };
 }

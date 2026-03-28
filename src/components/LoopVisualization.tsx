@@ -7,7 +7,7 @@ import {
   PIANO_ROLL_STEPS_PER_BEAT,
   type EditableLoop,
 } from "../music/editor";
-import type { GeneratedLoop, LayerName } from "../music/types";
+import type { GeneratedLoop, NoteLayerName } from "../music/types";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Select } from "./ui/select";
@@ -117,7 +117,7 @@ export function LoopVisualization({
   hasUnsavedChanges,
 }: LoopVisualizationProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const [activeEditLayer, setActiveEditLayer] = useState<LayerName>("melody");
+  const [activeEditLayer, setActiveEditLayer] = useState<NoteLayerName>("melody");
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const model = useMemo(() => mapLoopToVisualization(editableLoop), [editableLoop]);
@@ -209,7 +209,7 @@ export function LoopVisualization({
   const svgHeight = GRID_TOP + 24 + gridHeight;
 
   const inactiveLayers = (["chords", "melody", "bass"] as const).filter((layer) => layer !== activeEditLayer);
-  const layerStyles = new Map<LayerName, LayerStyle>();
+  const layerStyles = new Map<NoteLayerName, LayerStyle>();
   layerStyles.set(activeEditLayer, ACTIVE_LAYER_STYLES[activeEditLayer]);
   inactiveLayers.forEach((layer, index) => {
     const referenceStyle = INACTIVE_LAYER_STYLES[index] ?? INACTIVE_LAYER_STYLES[INACTIVE_LAYER_STYLES.length - 1];
@@ -378,7 +378,7 @@ export function LoopVisualization({
               <Select
                 value={activeEditLayer}
                 onChange={(event) => {
-                  setActiveEditLayer(event.target.value as LayerName);
+                  setActiveEditLayer(event.target.value as NoteLayerName);
                   setSelectedNoteId(null);
                 }}
                 className="h-8 rounded-full border-0 bg-transparent px-2 py-0 text-xs shadow-none ring-offset-0 focus-visible:ring-1 text-[#4c1d95] dark:text-[#4c1d95]"

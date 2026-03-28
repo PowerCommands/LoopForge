@@ -7,7 +7,7 @@ interface LayerToggleGroupProps {
   canReroll: boolean;
 }
 
-const LAYER_OPTIONS: LayerName[] = ["chords", "melody", "bass"];
+const LAYER_OPTIONS: LayerName[] = ["chords", "melody", "bass", "drums"];
 
 export function LayerToggleGroup({ value, onChange, onRerollLayer, canReroll }: LayerToggleGroupProps) {
   return (

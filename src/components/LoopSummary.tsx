@@ -39,6 +39,7 @@ export function LoopSummary({ loop, compact = false }: LoopSummaryProps) {
           {loop.settings.sequence.groove} groove,{" "}
           {loop.settings.sequence.register} register
         </li>
+        <li>Drums: {loop.drums.length > 0 ? `${loop.drums.length} hits` : "No drums enabled"}</li>
       </ul>
     </section>
   );

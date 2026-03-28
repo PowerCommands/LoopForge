@@ -17,12 +17,13 @@ export function normalizeGeneratedLoop(loop: GeneratedLoop): GeneratedLoop {
   return {
     ...loop,
     settings: normalizeLoopSettings(loop.settings),
-    chords: loop.chords.map((chord) => ({
+    chords: Array.isArray(loop.chords) ? loop.chords.map((chord) => ({
       ...chord,
       notes: [...chord.notes],
-    })),
-    melody: loop.melody.map((note) => ({ ...note })),
-    bass: loop.bass.map((note) => ({ ...note })),
+    })) : [],
+    melody: Array.isArray(loop.melody) ? loop.melody.map((note) => ({ ...note })) : [],
+    bass: Array.isArray(loop.bass) ? loop.bass.map((note) => ({ ...note })) : [],
+    drums: Array.isArray(loop.drums) ? loop.drums.map((event) => ({ ...event })) : [],
   };
 }
 

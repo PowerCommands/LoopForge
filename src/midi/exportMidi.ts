@@ -1,13 +1,20 @@
 import { Midi } from "@tonejs/midi";
 import { Note } from "tonal";
-import type { GeneratedLoop, SavedLoop, TimedNote } from "../music/types";
+import type { DrumEvent, GeneratedLoop, SavedLoop, TimedNote } from "../music/types";
 
-type LayerName = "chords" | "melody" | "bass";
+type LayerName = "chords" | "melody" | "bass" | "drums";
+
+const DRUM_MIDI_MAP = {
+  kick: 36,
+  snare: 38,
+  hihat: 42,
+} as const;
 
 interface MidiTrackMap {
   chords?: ReturnType<Midi["addTrack"]>;
   melody?: ReturnType<Midi["addTrack"]>;
   bass?: ReturnType<Midi["addTrack"]>;
+  drums?: ReturnType<Midi["addTrack"]>;
 }
 
 function clampVelocity(value: number): number {
@@ -58,6 +65,21 @@ function addNotes(
   });
 }
 
+function addDrumNotes(
+  track: ReturnType<Midi["addTrack"]>,
+  drums: DrumEvent[],
+  ppq: number,
+): void {
+  drums.forEach((event, index) => {
+    track.addNote({
+      midi: DRUM_MIDI_MAP[event.instrument],
+      ticks: toTicks(event.time, ppq),
+      durationTicks: Math.max(1, toTicks(event.duration, ppq)),
+      velocity: clampVelocity(event.velocity + (index % 4 === 0 ? 0.02 : 0)),
+    });
+  });
+}
+
 function createExportFilename(loop: GeneratedLoop): string {
   const key = loop.settings.key.replace("#", "sharp").replace("b", "flat");
   const scale = loop.settings.scale.toLowerCase();
@@ -91,6 +113,9 @@ function getOrCreateTrack(midi: Midi, tracks: MidiTrackMap, layer: LayerName) {
   if (!tracks[layer]) {
     const track = midi.addTrack();
     track.name = layer.charAt(0).toUpperCase() + layer.slice(1);
+    if (layer === "drums") {
+      track.channel = 9;
+    }
     tracks[layer] = track;
   }
 
@@ -158,6 +183,15 @@ function appendLoopToTracks(
 
         return note.velocity + velocityOffset + accent + cycleVariation;
       },
+    );
+  }
+
+  if (loop.drums.length > 0) {
+    const drumsTrack = getOrCreateTrack(midi, tracks, "drums");
+    addDrumNotes(
+      drumsTrack,
+      loop.drums.map((event) => ({ ...event, time: event.time + startBeat })),
+      ppq,
     );
   }
 }

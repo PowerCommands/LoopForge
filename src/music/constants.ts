@@ -56,6 +56,7 @@ export const DEFAULT_SETTINGS: LoopSettings = {
     chords: true,
     melody: true,
     bass: true,
+    drums: true,
   },
   sequence: DEFAULT_SEQUENCE_SETTINGS,
 };
@@ -101,6 +102,7 @@ export function normalizeLoopSettings(settings?: Partial<LoopSettings> | null): 
       chords: settings?.layers?.chords ?? DEFAULT_SETTINGS.layers.chords,
       melody: settings?.layers?.melody ?? DEFAULT_SETTINGS.layers.melody,
       bass: settings?.layers?.bass ?? DEFAULT_SETTINGS.layers.bass,
+      drums: settings?.layers?.drums ?? DEFAULT_SETTINGS.layers.drums,
     },
     sequence: normalizeSequenceSettings(settings?.sequence),
   };

@@ -2,7 +2,8 @@ export type ScaleType = "Major" | "Minor";
 export type Mood = "Balanced" | "Dark" | "Bright" | "Sparse" | "Intense" | "Calm";
 export type LoopLength = 2 | 4;
 export type Section = "intro" | "verse" | "chorus" | "bridge" | "outro";
-export type LayerName = "chords" | "melody" | "bass";
+export type LayerName = "chords" | "melody" | "bass" | "drums";
+export type NoteLayerName = "chords" | "melody" | "bass";
 export type SequencePatternLength = 8 | 16;
 export type SequenceDensity = "low" | "medium" | "high";
 export type SequenceVariation = "low" | "medium" | "high";
@@ -11,11 +12,13 @@ export type SequenceStyle = "straight" | "syncopated" | "flowing" | "arp-like" |
 export type SequenceGroove = "straight" | "swing" | "triplet";
 export type SequenceRegister = "low" | "mid" | "high" | "wide";
 export type SequenceStepState = "trigger" | "rest" | "hold";
+export type DrumInstrument = "kick" | "snare" | "hihat";
 
 export interface LayerToggles {
   chords: boolean;
   melody: boolean;
   bass: boolean;
+  drums: boolean;
 }
 
 export interface SequenceSettings {
@@ -60,6 +63,13 @@ export interface ChordEvent {
   duration: number;
 }
 
+export interface DrumEvent {
+  instrument: DrumInstrument;
+  time: number;
+  duration: number;
+  velocity: number;
+}
+
 export interface GeneratedLoop {
   id: string;
   settings: LoopSettings;
@@ -67,6 +77,7 @@ export interface GeneratedLoop {
   chords: ChordEvent[];
   melody: TimedNote[];
   bass: TimedNote[];
+  drums: DrumEvent[];
 }
 
 export interface SavedLoop {

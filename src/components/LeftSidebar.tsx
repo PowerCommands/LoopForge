@@ -14,7 +14,7 @@ import {
   SEQUENCE_STYLE_OPTIONS,
   SEQUENCE_VARIATION_OPTIONS,
 } from "../music/constants";
-import type { GeneratedLoop, LoopSettings, Mood, ScaleType, LayerToggles, Section } from "../music/types";
+import type { GeneratedLoop, LayerName, LoopSettings, Mood, ScaleType, LayerToggles, Section } from "../music/types";
 
 interface SectionOption {
   value: Section;
@@ -34,11 +34,13 @@ interface LeftSidebarProps {
   autoplay: boolean;
   onUpdateSetting: <K extends keyof LoopSettings>(key: K, value: LoopSettings[K]) => void;
   onUpdateLayers: (layers: LayerToggles) => void;
+  onRerollLayer: (layer: LayerName) => void;
   onAutoplayChange: (autoplay: boolean) => void;
   onGenerate: () => void;
   onPlay: () => void;
   onStop: () => void;
   onExportMidi: () => void;
+  onAddLoop: () => void;
   onExportWav: () => void;
   isExportingWav: boolean;
   wavExportStatus: string | null;
@@ -58,11 +60,13 @@ export function LeftSidebar({
   autoplay,
   onUpdateSetting,
   onUpdateLayers,
+  onRerollLayer,
   onAutoplayChange,
   onGenerate,
   onPlay,
   onStop,
   onExportMidi,
+  onAddLoop,
   onExportWav,
   isExportingWav,
   wavExportStatus,
@@ -304,7 +308,12 @@ export function LeftSidebar({
           </CardHeader>
           <CardContent>
             <ControlField label="Active Layers">
-              <LayerToggleGroup value={settings.layers} onChange={onUpdateLayers} />
+              <LayerToggleGroup
+                value={settings.layers}
+                onChange={onUpdateLayers}
+                onRerollLayer={onRerollLayer}
+                canReroll={hasCurrentLoop}
+              />
             </ControlField>
             <div className="mt-4">
               <LoopSummary loop={loop} compact />
@@ -363,6 +372,19 @@ export function LeftSidebar({
                 <path d="M12 3v12" />
                 <path d="m7 10 5 5 5-5" />
                 <path d="M5 19h14" />
+              </svg>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onAddLoop}
+              disabled={!hasCurrentLoop}
+              className="shrink-0 px-3"
+              title="Add loop"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={iconClassName} aria-hidden="true">
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
               </svg>
             </Button>
             <label className="ml-2 inline-flex shrink-0 items-center gap-2 rounded-md border border-border bg-white/55 px-3 py-2 text-sm text-foreground dark:bg-white/5">

@@ -3,6 +3,7 @@ import { createBaseSequencePattern, createPatternForBar, getPatternStepDuration,
 import type {
   ChordEvent,
   GeneratedLoop,
+  LayerName,
   LayerToggles,
   LoopLength,
   LoopSettings,
@@ -321,6 +322,52 @@ export function generateLoop(settings: LoopSettings): GeneratedLoop {
     chords: settings.layers.chords ? progression : [],
     melody: settings.layers.melody ? buildMelody(progression, scaleNotes, settings, profile, sectionProfile) : [],
     bass: settings.layers.bass ? buildBass(progression, scaleNotes, settings, profile, sectionProfile) : [],
+  };
+}
+
+export function rerollGeneratedLoopLayer(existingLoop: GeneratedLoop, settings: LoopSettings, layer: LayerName): GeneratedLoop {
+  const nextSettings: LoopSettings = {
+    ...settings,
+    layers: {
+      ...settings.layers,
+      [layer]: true,
+    },
+  };
+  const profile = MOOD_PROFILES[nextSettings.mood];
+  const sectionProfile = getSectionProfile(nextSettings.section);
+  const scaleNotes = getScaleNotes(nextSettings.key, nextSettings.scale);
+  const degreeChords = getDegreeChords(scaleNotes, nextSettings.scale);
+  const rerolledProgression = buildProgression(
+    degreeChords,
+    nextSettings.scale,
+    nextSettings.mood,
+    nextSettings.length,
+    nextSettings.section,
+  );
+  const progressionForSingleLayer = existingLoop.chords.length > 0 ? existingLoop.chords : rerolledProgression;
+
+  return {
+    id: `${Date.now()}`,
+    settings: nextSettings,
+    totalBeats: nextSettings.length * 4,
+    chords:
+      layer === "chords"
+        ? rerolledProgression
+        : nextSettings.layers.chords
+          ? existingLoop.chords
+          : [],
+    melody:
+      layer === "melody"
+        ? buildMelody(progressionForSingleLayer, scaleNotes, nextSettings, profile, sectionProfile)
+        : nextSettings.layers.melody
+          ? existingLoop.melody
+          : [],
+    bass:
+      layer === "bass"
+        ? buildBass(progressionForSingleLayer, scaleNotes, nextSettings, profile, sectionProfile)
+        : nextSettings.layers.bass
+          ? existingLoop.bass
+          : [],
   };
 }
 

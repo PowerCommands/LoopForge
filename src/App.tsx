@@ -43,9 +43,9 @@ import {
   type StoredArrangement,
 } from "./music/arrangementLibrary";
 import { DEFAULT_SEQUENCE_SETTINGS, DEFAULT_SETTINGS, KEY_OPTIONS, normalizeLoopSettings, SECTION_OPTIONS } from "./music/constants";
-import { generateLoop } from "./music/generator";
+import { generateLoop, rerollGeneratedLoopLayer } from "./music/generator";
 import { downloadArrangementMidi, exportLoopToMidi } from "./midi/exportMidi";
-import type { GeneratedLoop, LoopSettings, Mood, SavedLoop, ScaleType, Section } from "./music/types";
+import type { GeneratedLoop, LayerName, LoopSettings, Mood, SavedLoop, ScaleType, Section } from "./music/types";
 import { APP_STORAGE_KEYS } from "./lib/appStorage";
 import { getLoopDurationSeconds, playbackEngine } from "./playback/transport";
 
@@ -509,6 +509,37 @@ export default function App() {
     }
   };
 
+  const handleRerollLayer = async (layer: LayerName) => {
+    if (!currentLoop) {
+      return;
+    }
+
+    const nextSettings: LoopSettings = {
+      ...settings,
+      layers: {
+        ...settings.layers,
+        [layer]: true,
+      },
+    };
+    const nextLoop = rerollGeneratedLoopLayer(currentLoop, nextSettings, layer);
+    const nextEditableLoop = createEditableLoopFromGeneratedLoop(nextLoop);
+
+    clearPlaybackTimeout();
+    playbackEngine.stop();
+    setSettings(nextSettings);
+    setEditableLoop(nextEditableLoop);
+    setSavedEditableLoop(cloneEditableLoop(nextEditableLoop));
+    setUndoStack([]);
+    setRedoStack([]);
+    setEditingSavedLoopId(null);
+    setIsPlaying(false);
+
+    if (autoplay) {
+      await playbackEngine.play(nextLoop);
+      setIsPlaying(true);
+    }
+  };
+
   const handlePlay = async () => {
     if (!currentLoop) {
       return;
@@ -895,11 +926,13 @@ export default function App() {
               autoplay={autoplay}
               onUpdateSetting={updateSettings}
               onUpdateLayers={(layers) => updateSettings("layers", layers)}
+              onRerollLayer={handleRerollLayer}
               onAutoplayChange={setAutoplay}
               onGenerate={handleGenerate}
               onPlay={handlePlay}
               onStop={handleStop}
               onExportMidi={handleExport}
+              onAddLoop={handleAddLoop}
               onExportWav={handleExportWav}
               isExportingWav={isExportingWav}
               wavExportStatus={wavExportStatus}

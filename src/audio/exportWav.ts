@@ -1,7 +1,6 @@
 import * as Tone from "tone";
 import type { GeneratedLoop, SavedLoop } from "../music/types";
 import {
-  createLoopPlaybackInstrumentRack,
   getLoopDurationSeconds,
   setRackVolume,
 } from "../playback/transport";
@@ -13,6 +12,14 @@ type RenderedAudioBuffer = {
   length: number;
   getChannelData: (channel: number) => Float32Array<ArrayBufferLike>;
 };
+
+interface OfflineExportRack {
+  output: Tone.Volume;
+  chordSynth: Tone.PolySynth;
+  melodySynth: Tone.Synth;
+  bassSynth: Tone.MonoSynth;
+  dispose: () => void;
+}
 
 function sanitizeFilenamePart(value: string): string {
   return value
@@ -49,8 +56,39 @@ function beatToSeconds(beats: number, tempo: number): number {
   return (beats * 60) / tempo;
 }
 
+function createOfflineExportRack(): OfflineExportRack {
+  const output = new Tone.Volume(0).toDestination();
+  const chordSynth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: "triangle" },
+    envelope: { attack: 0.02, release: 0.8 },
+  }).connect(output);
+  const melodySynth = new Tone.Synth({
+    oscillator: { type: "sine" },
+    envelope: { attack: 0.01, decay: 0.15, sustain: 0.25, release: 0.3 },
+  }).connect(output);
+  const bassSynth = new Tone.MonoSynth({
+    oscillator: { type: "square" },
+    filter: { Q: 2, type: "lowpass", rolloff: -24 },
+    envelope: { attack: 0.02, decay: 0.2, sustain: 0.6, release: 0.4 },
+    filterEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.4, release: 0.8, baseFrequency: 120, octaves: 2 },
+  }).connect(output);
+
+  return {
+    output,
+    chordSynth,
+    melodySynth,
+    bassSynth,
+    dispose: () => {
+      chordSynth.dispose();
+      melodySynth.dispose();
+      bassSynth.dispose();
+      output.dispose();
+    },
+  };
+}
+
 function scheduleLoopOffline(
-  rack: ReturnType<typeof createLoopPlaybackInstrumentRack>,
+  rack: OfflineExportRack,
   loop: GeneratedLoop,
   startSeconds: number,
 ): void {
@@ -92,7 +130,7 @@ async function renderLoopToAudioBuffer(
   const renderDuration = getLoopDurationSeconds(loop) + tailSeconds;
 
   return Tone.Offline(({ transport }) => {
-    const rack = createLoopPlaybackInstrumentRack();
+    const rack = createOfflineExportRack();
     scheduleLoopOffline(rack, loop, 0);
 
     setRackVolume(rack.output, volume);

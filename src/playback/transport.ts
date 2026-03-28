@@ -1,15 +1,19 @@
 import * as Tone from "tone";
 import type { GeneratedLoop, SavedLoop, TimedNote } from "../music/types";
 import type { ChordEvent } from "../music/types";
+import {
+  disposePianoSampler,
+  ensurePianoSamplerLoaded,
+  getPianoSamplerRack,
+  type PianoSamplerRack,
+} from "../lib/audio/pianoSampler";
 
 type ScheduledChordEvent = Omit<ChordEvent, "time"> & { time: string };
 type ScheduledNoteEvent = Omit<TimedNote, "time"> & { time: string };
 
 export interface LoopPlaybackInstrumentRack {
   output: Tone.Volume;
-  chordSynth: Tone.PolySynth;
-  melodySynth: Tone.Synth;
-  bassSynth: Tone.MonoSynth;
+  piano: Tone.Sampler;
   dispose: () => void;
 }
 
@@ -47,39 +51,18 @@ export function setRackVolume(output: Tone.Volume, volume: number): void {
 }
 
 export function createLoopPlaybackInstrumentRack(): LoopPlaybackInstrumentRack {
-  const output = new Tone.Volume(0).toDestination();
-  const chordSynth = new Tone.PolySynth(Tone.Synth, {
-    oscillator: { type: "triangle" },
-    envelope: { attack: 0.02, release: 0.8 },
-  }).connect(output);
-  const melodySynth = new Tone.Synth({
-    oscillator: { type: "sine" },
-    envelope: { attack: 0.01, decay: 0.15, sustain: 0.25, release: 0.3 },
-  }).connect(output);
-  const bassSynth = new Tone.MonoSynth({
-    oscillator: { type: "square" },
-    filter: { Q: 2, type: "lowpass", rolloff: -24 },
-    envelope: { attack: 0.02, decay: 0.2, sustain: 0.6, release: 0.4 },
-    filterEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.4, release: 0.8, baseFrequency: 120, octaves: 2 },
-  }).connect(output);
+  const rack: PianoSamplerRack = getPianoSamplerRack();
 
   return {
-    output,
-    chordSynth,
-    melodySynth,
-    bassSynth,
-    dispose: () => {
-      chordSynth.dispose();
-      melodySynth.dispose();
-      bassSynth.dispose();
-      output.dispose();
-    },
+    output: rack.output,
+    piano: rack.sampler,
+    dispose: disposePianoSampler,
   };
 }
 
 export function createLoopParts(
   loop: GeneratedLoop,
-  rack: Pick<LoopPlaybackInstrumentRack, "chordSynth" | "melodySynth" | "bassSynth">,
+  rack: Pick<LoopPlaybackInstrumentRack, "piano">,
   startBeat = 0,
 ): Tone.Part[] {
   const parts: Tone.Part[] = [];
@@ -92,7 +75,7 @@ export function createLoopParts(
 
     parts.push(
       new Tone.Part<ScheduledChordEvent>((time, chord) => {
-        rack.chordSynth.triggerAttackRelease(
+        rack.piano.triggerAttackRelease(
           chord.notes,
           noteDurationToTransportTime(chord.duration),
           time,
@@ -110,7 +93,7 @@ export function createLoopParts(
 
     parts.push(
       new Tone.Part<ScheduledNoteEvent>((time, note) => {
-        rack.melodySynth.triggerAttackRelease(
+        rack.piano.triggerAttackRelease(
           note.note,
           noteDurationToTransportTime(note.duration),
           time,
@@ -128,7 +111,7 @@ export function createLoopParts(
 
     parts.push(
       new Tone.Part<ScheduledNoteEvent>((time, note) => {
-        rack.bassSynth.triggerAttackRelease(
+        rack.piano.triggerAttackRelease(
           note.note,
           noteDurationToTransportTime(note.duration),
           time,
@@ -146,10 +129,18 @@ class LoopPlaybackEngine {
 
   private parts: Tone.Part[] = [];
   private scheduledEventIds: number[] = [];
+  private playbackRequestId = 0;
 
   async play(loop: GeneratedLoop): Promise<void> {
+    const requestId = ++this.playbackRequestId;
     await Tone.start();
-    this.stop();
+    const isReady = await this.ensureReady();
+
+    if (!isReady || requestId !== this.playbackRequestId) {
+      return;
+    }
+
+    this.resetTransportState();
     this.setTempo(loop.settings.tempo);
     Tone.Transport.loop = true;
     Tone.Transport.loopEnd = `${loop.settings.length}m`;
@@ -159,8 +150,15 @@ class LoopPlaybackEngine {
   }
 
   async playLoopOnce(loop: GeneratedLoop): Promise<void> {
+    const requestId = ++this.playbackRequestId;
     await Tone.start();
-    this.stop();
+    const isReady = await this.ensureReady();
+
+    if (!isReady || requestId !== this.playbackRequestId) {
+      return;
+    }
+
+    this.resetTransportState();
     this.setTempo(loop.settings.tempo);
     Tone.Transport.loop = false;
     this.parts = this.createParts(loop);
@@ -179,8 +177,15 @@ class LoopPlaybackEngine {
       return;
     }
 
+    const requestId = ++this.playbackRequestId;
     await Tone.start();
-    this.stop();
+    const isReady = await this.ensureReady();
+
+    if (!isReady || requestId !== this.playbackRequestId) {
+      return;
+    }
+
+    this.resetTransportState();
     this.setTempo(savedLoops[0].loop.settings.tempo);
     Tone.Transport.loop = false;
 
@@ -219,13 +224,13 @@ class LoopPlaybackEngine {
     setRackVolume(this.rack.output, volume);
   }
 
+  preload(): Promise<boolean> {
+    return this.ensureReady();
+  }
+
   stop(): void {
-    Tone.Transport.stop();
-    Tone.Transport.position = 0;
-    this.scheduledEventIds.forEach((eventId) => Tone.Transport.clear(eventId));
-    this.scheduledEventIds = [];
-    this.parts.forEach((part) => part.dispose());
-    this.parts = [];
+    this.playbackRequestId += 1;
+    this.resetTransportState();
   }
 
   dispose(): void {
@@ -235,6 +240,25 @@ class LoopPlaybackEngine {
 
   private createParts(loop: GeneratedLoop, startBeat = 0): Tone.Part[] {
     return createLoopParts(loop, this.rack, startBeat);
+  }
+
+  private async ensureReady(): Promise<boolean> {
+    try {
+      await ensurePianoSamplerLoaded();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private resetTransportState(): void {
+    Tone.Transport.stop();
+    Tone.Transport.position = 0;
+    this.scheduledEventIds.forEach((eventId) => Tone.Transport.clear(eventId));
+    this.scheduledEventIds = [];
+    this.parts.forEach((part) => part.dispose());
+    this.parts = [];
+    this.rack.piano.releaseAll();
   }
 }
 

@@ -347,6 +347,10 @@ export default function App() {
   }, [volume]);
 
   useEffect(() => {
+    void playbackEngine.preload();
+  }, []);
+
+  useEffect(() => {
     setCookieValue(AUTOPLAY_STORAGE_KEY, String(autoplay));
   }, [autoplay]);
 
@@ -535,6 +539,31 @@ export default function App() {
     setIsPlaying(false);
 
     if (autoplay) {
+      await playbackEngine.play(nextLoop);
+      setIsPlaying(true);
+    }
+  };
+
+  const handleUpdateLayers = async (layers: LoopSettings["layers"]) => {
+    const nextSettings: LoopSettings = {
+      ...settings,
+      layers,
+    };
+    const nextLoop = generateLoop(nextSettings);
+    const nextEditableLoop = createEditableLoopFromGeneratedLoop(nextLoop);
+    const shouldResumePlayback = isPlaying || autoplay;
+
+    clearPlaybackTimeout();
+    playbackEngine.stop();
+    setSettings(nextSettings);
+    setEditableLoop(nextEditableLoop);
+    setSavedEditableLoop(cloneEditableLoop(nextEditableLoop));
+    setUndoStack([]);
+    setRedoStack([]);
+    setEditingSavedLoopId(null);
+    setIsPlaying(false);
+
+    if (shouldResumePlayback) {
       await playbackEngine.play(nextLoop);
       setIsPlaying(true);
     }
@@ -925,7 +954,7 @@ export default function App() {
               isPlaying={isPlaying}
               autoplay={autoplay}
               onUpdateSetting={updateSettings}
-              onUpdateLayers={(layers) => updateSettings("layers", layers)}
+              onUpdateLayers={handleUpdateLayers}
               onRerollLayer={handleRerollLayer}
               onAutoplayChange={setAutoplay}
               onGenerate={handleGenerate}

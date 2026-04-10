@@ -128,20 +128,20 @@ async function renderLoopToAudioBuffer(
   tailSeconds: number,
 ): Promise<RenderedAudioBuffer> {
   const renderDuration = getLoopDurationSeconds(loop) + tailSeconds;
+  let rack: OfflineExportRack | null = null;
 
-  return Tone.Offline(({ transport }) => {
-    const rack = createOfflineExportRack();
+  const buffer = await Tone.Offline(({ transport }) => {
+    rack = createOfflineExportRack();
     scheduleLoopOffline(rack, loop, 0);
 
     setRackVolume(rack.output, volume);
     transport.bpm.value = loop.settings.tempo;
     transport.loop = false;
     transport.start(0);
-
-    transport.scheduleOnce(() => {
-      rack.dispose();
-    }, renderDuration);
   }, renderDuration);
+
+  (rack as OfflineExportRack | null)?.dispose();
+  return buffer;
 }
 
 export async function renderCurrentLoopToAudioBuffer(loop: GeneratedLoop, volume: number): Promise<RenderedAudioBuffer> {

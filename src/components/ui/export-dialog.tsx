@@ -23,14 +23,14 @@ export function ExportDialog({
   onClose,
   onDownload,
 }: ExportDialogProps) {
-  const [format, setFormat] = useState<ExportFormat>("wav");
+  const [format, setFormat] = useState<ExportFormat>("midi");
 
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    setFormat("wav");
+    setFormat("midi");
   }, [open]);
 
   useEffect(() => {

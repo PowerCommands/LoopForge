@@ -661,7 +661,7 @@ export default function App() {
 
     setLoopNameDialog({
       open: true,
-      initialValue: getDefaultLoopName(savedLoops),
+      initialValue: SECTION_LABELS[currentLoop.settings.section],
       loop: cloneGeneratedLoop(currentLoop),
     });
   };
